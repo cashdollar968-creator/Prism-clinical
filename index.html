@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PRISM — Clinical Documentation</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172033;background:#f5f7fa}
+*{box-sizing:border-box}body{margin:0}button,input,select,textarea{font:inherit}button{cursor:pointer}
+header{background:#102a43;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
+.brand{font-weight:800;letter-spacing:.5px}.sub{font-size:12px;opacity:.75}
+main{max-width:1180px;margin:auto;padding:18px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.card{background:#fff;border:1px solid #dfe5ec;border-radius:12px;padding:16px;box-shadow:0 1px 2px #00000008}
+h1,h2,h3{margin:0 0 12px}h2{font-size:21px}h3{font-size:16px}
+.muted{color:#667085}.danger{color:#b42318}.ok{color:#067647}.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#eef2f6;font-size:12px;margin:2px}
+.btn{border:0;border-radius:8px;padding:9px 13px;background:#155eef;color:white}.btn.secondary{background:#e9eef5;color:#172033}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.between{justify-content:space-between}
+nav{display:flex;gap:6px;overflow:auto;margin-bottom:16px}.navbtn{white-space:nowrap;border:1px solid #d0d5dd;background:#fff;border-radius:8px;padding:8px 11px}.navbtn.active{background:#102a43;color:#fff}
+label{display:block;font-size:12px;font-weight:700;margin:10px 0 5px}input,select,textarea{width:100%;border:1px solid #cfd6df;border-radius:8px;padding:9px;background:#fff}textarea{min-height:82px;resize:vertical}
+.item{padding:12px;border:1px solid #e4e7ec;border-radius:9px;margin-top:8px}.click{cursor:pointer}.click:hover{background:#f8fafc}
+.timeline{border-left:3px solid #d0d5dd;padding-left:14px}.event{margin:0 0 14px}.small{font-size:12px}
+.login{max-width:420px;margin:12vh auto}.notice{background:#fff8e1;border:1px solid #f2c94c;padding:10px;border-radius:8px;font-size:13px;margin-bottom:14px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid #eee;font-size:13px}
+@media(max-width:600px){main{padding:10px}.card{padding:13px}}
+</style>
+</head>
+<body><div id="root"></div>
+<script type="module">
+import React,{useEffect,useState} from "https://esm.sh/react@18.3.1";
+import{createRoot}from"https://esm.sh/react-dom@18.3.1/client";
+import{createClient}from"https://esm.sh/@supabase/supabase-js@2";
+
+const SUPABASE_URL="https://rcikgkdesnlfewkfeybv.supabase.co";
+const SUPABASE_KEY="sb_publishable_Nm1XfSDRO1O_2qY20Q_eSQ_Sfh0DiCf";
+const db=createClient(SUPABASE_URL,SUPABASE_KEY);
+const h=React.createElement;
+const blank={clinical_changes:"",new_results:"",problems_assessment:"",clinical_stability:"stable",response:"",management_changes:"",remaining_inpatient_needs:"",why_still_admitted:"",recommendation_next_steps:"",escalation_red_flags:""};
+
+function Login(){
+ const[e,setE]=useState(""),[p,setP]=useState(""),[err,setErr]=useState("");
+ async function go(ev){ev.preventDefault();setErr("");const{error}=await db.auth.signInWithPassword({email:e,password:p});if(error)setErr(error.message)}
+ return h("div",{className:"login card"},h("h1",null,"PRISM"),h("p",{className:"muted"},"Problem-oriented Inpatient Review & Structured Monitoring"),
+ h("div",{className:"notice"},"Temporary clinical follow-up system. Do not use as the hospital's permanent medical record."),
+ h("form",{onSubmit:go},h("label",null,"Email"),h("input",{type:"email",required:true,value:e,onChange:x=>setE(x.target.value)}),
+ h("label",null,"Password"),h("input",{type:"password",required:true,value:p,onChange:x=>setP(x.target.value)}),h("br"),
+ h("button",{className:"btn",style:{width:"100%"}},"Sign in")),err&&h("p",{className:"danger"},err))
+}
+
+function App(){
+ const[sess,setSess]=useState(null),[profile,setProfile]=useState(null),[tab,setTab]=useState("dashboard"),[patients,setPatients]=useState([]),[sel,setSel]=useState(null),[msg,setMsg]=useState("");
+ useEffect(()=>{db.auth.getSession().then(({data})=>setSess(data.session));const x=db.auth.onAuthStateChange((_e,s)=>setSess(s));return()=>x.data.subscription.unsubscribe()},[]);
+ useEffect(()=>{if(sess)load()},[sess]);
+ async function load(){const{data,error}=await db.from("profiles").select("*").eq("id",sess.user.id).maybeSingle();if(error)setMsg(error.message);setProfile(data);const r=await db.from("patients").select("*,admissions(id,status,ward_id,bed_id,admission_datetime,working_diagnosis)").order("updated_at",{ascending:false});if(r.error)setMsg(r.error.message);setPatients(r.data||[])}
+ async function logout(){await db.auth.signOut();setSess(null);setProfile(null)}
+ if(!sess)return h(Login);
+ if(!profile)return h("main",null,h("div",{className:"notice"},"Signed in, but this account has no active PRISM profile. An administrator must create/activate the profile."),h("button",{className:"btn",onClick:logout},"Sign out"));
+ const active=patients.filter(p=>(p.admissions||[]).some(a=>a.status==="active"));
+ const open=p=>{setSel(p);setTab("patient")};
+ let content;
+ if(tab==="dashboard")content=h("div",null,h("div",{className:"row between"},h("div",null,h("h2",null,"Dashboard"),h("p",{className:"muted"},"Current inpatient overview")),h("button",{className:"btn",onClick:load},"Refresh")),
+ h("div",{className:"grid"},h("div",{className:"card"},h("h3",null,"Active admissions"),h("h2",null,active.length)),h("div",{className:"card"},h("h3",null,"Authorized patients"),h("h2",null,patients.length))),
+ h("div",{className:"card"},h("h3",null,"Patients"),active.length?active.map(p=>h(Card,{key:p.id,p,onClick:()=>open(p)})):h("p",{className:"muted"},"No active admissions.")));
+ else if(tab==="patients")content=h(Patients,{patients,onClick:open,onRefresh:load});
+ else if(tab==="patient"&&sel)content=h(Patient,{p:sel,profile,onBack:()=>{setTab("patients");load()}});
+ else if(tab==="admin"&&profile.role==="admin")content=h(Admin);
+ else content=h("div",{className:"card"},h("h2",null,"Specialist queue"),h("p",{className:"muted"},"Specialist requests and reviews are stored in the shared database and are visible only to authorized users."));
+ return h("div",null,h("header",null,h("div",null,h("div",{className:"brand"},"PRISM"),h("div",{className:"sub"},"Clinical documentation • "+profile.role)),h("button",{className:"btn secondary",onClick:logout},"Sign out")),
+ h("main",null,h("nav",null,...["dashboard","patients","queue",...(profile.role==="admin"?["admin"]:[])].map(x=>h("button",{className:"navbtn "+(tab===x?"active":""),onClick:()=>setTab(x)},x==="queue"?"Specialist queue":x[0].toUpperCase()+x.slice(1)))),msg&&h("div",{className:"notice"},msg),content))
+}
+
+function Card({p,onClick}){const a=(p.admissions||[]).find(x=>x.status==="active");return h("div",{className:"item click",onClick},h("div",{className:"row between"},h("strong",null,p.patient_code),h("span",{className:"badge"},p.demo?"DEMO":"OPERATIONAL")),h("div",null,(p.full_name||"Unnamed patient")+" • "+p.age+" / "+p.sex),a&&h("div",{className:"muted small"},a.working_diagnosis||"No working diagnosis"))}
+
+function Patients({patients,onClick,onRefresh}){const[q,setQ]=useState("");const list=patients.filter(p=>JSON.stringify(p).toLowerCase().includes(q.toLowerCase()));return h("div",null,h("div",{className:"row between"},h("h2",null,"Patients"),h("button",{className:"btn secondary",onClick:onRefresh},"Refresh")),h("input",{placeholder:"Search patient code, name, diagnosis…",value:q,onChange:e=>setQ(e.target.value)}),h("div",{className:"grid",style:{marginTop:12}},list.map(p=>h(Card,{key:p.id,p,onClick:()=>onClick(p)})))}
+
+function Patient({p,profile,onBack}){
+ const a=(p.admissions||[]).find(x=>x.status==="active")||(p.admissions||[])[0], [ad,setAd]=useState(null),[updates,setUpdates]=useState([]),[reviews,setReviews]=useState([]),[form,setForm]=useState(blank),[show,setShow]=useState(false),[notice,setNotice]=useState("");
+ useEffect(()=>{if(a)load()},[a?.id]);
+ async function load(){const [x,y,z]=await Promise.all([db.from("admissions").select("*").eq("id",a.id).single(),db.from("daily_updates").select("*,profiles(display_name)").eq("admission_id",a.id).order("occurred_at",{ascending:false}),db.from("specialist_reviews").select("*,profiles(display_name)").eq("admission_id",a.id).order("reviewed_at",{ascending:false})]);setAd(x.data);setUpdates(y.data||[]);setReviews(z.data||[])}
+ async function save(ev){ev.preventDefault();const{error}=await db.from("daily_updates").insert({...form,admission_id:a.id,author_id:profile.id,occurred_at:new Date().toISOString()});if(error)setNotice(error.message);else{setNotice("Follow-up saved.");setForm(blank);setShow(false);load()}}
+ if(!a)return h("div",{className:"card"},h("h2",null,"No admission"),h("button",{className:"btn",onClick:onBack},"Back"));
+ return h("div",null,h("button",{className:"btn secondary",onClick:onBack},"← Patients"),
+ h("div",{className:"card",style:{marginTop:10}},h("div",{className:"row between"},h("h2",null,p.patient_code+" — "+(p.full_name||"Patient")),h("span",{className:"badge"},p.demo?"DEMO":"OPERATIONAL")),
+ h("p",{className:"muted"},p.age+" / "+p.sex+" • "+new Date(a.admission_datetime).toLocaleString()),
+ h("h3",null,"Why admitted"),h("p",null,ad?.reason_for_admission||"—"),h("h3",null,"Working diagnosis"),h("p",null,ad?.working_diagnosis||"—"),
+ h("h3",null,"Baseline"),h("p",null,ad?.baseline_clinical_status||"—"),h("h3",null,"Initial plan"),h("p",null,ad?.initial_plan||"—")),
+ h("div",{className:"card"},h("div",{className:"row between"},h("h3",null,"Daily follow-up"),h("button",{className:"btn",onClick:()=>setShow(!show)},"+ Add")),
+ notice&&h("p",{className:"ok"},notice),show&&h("form",{onSubmit:save},Object.keys(blank).map(k=>h("div",{key:k},h("label",null,k.replaceAll("_"," ")),k==="clinical_stability"?h("select",{value:form[k],onChange:e=>setForm({...form,[k]:e.target.value})},["stable","improving","deteriorating","unstable"].map(v=>h("option",{value:v},v))):h("textarea",{value:form[k],onChange:e=>setForm({...form,[k]:e.target.value})})),h("button",{className:"btn"},"Save follow-up")),
+ h("div",{className:"timeline",style:{marginTop:14}},updates.map(u=>h("div",{className:"event",key:u.id},h("strong",null,new Date(u.occurred_at).toLocaleString()),h("span",{className:"badge"},u.clinical_stability),h("p",null,u.clinical_changes),h("p",{className:"muted"},u.recommendation_next_steps))),!updates.length&&h("p",{className:"muted"},"No daily updates yet."))),
+ h("div",{className:"card"},h("h3",null,"Specialist reviews"),reviews.map(r=>h("div",{className:"item",key:r.id},h("strong",null,new Date(r.reviewed_at).toLocaleString()),h("p",null,r.clinical_assessment),h("p",{className:"muted"},r.recommendations))),!reviews.length&&h("p",{className:"muted"},"No specialist reviews recorded.")))
+}
+
+function Admin(){const[p,setP]=useState([]),[d,setD]=useState([]),[w,setW]=useState([]),[b,setB]=useState([]);useEffect(()=>{(async()=>{const[x,y,z,q]=await Promise.all([db.from("profiles").select("*").order("created_at"),db.from("departments").select("*").order("name"),db.from("wards").select("*").order("name"),db.from("beds").select("*").order("name")]);setP(x.data||[]);setD(y.data||[]);setW(z.data||[]);setB(q.data||[])})()},[]);return h("div",null,h("h2",null,"Administration"),h("div",{className:"notice"},"Authentication/password administration should use the secure Supabase admin workflow. This page displays PRISM profiles and reference data."),h("div",{className:"card"},h("h3",null,"Profiles"),h("table",null,h("thead",null,h("tr",null,h("th",null,"Email"),h("th",null,"Role"),h("th",null,"Active"))),h("tbody",null,p.map(x=>h("tr",{key:x.id},h("td",null,x.email),h("td",null,x.role),h("td",null,String(x.active))))))),h("div",{className:"grid",style:{marginTop:12}},[["Departments",d],["Wards",w],["Beds",b]].map(([title,arr])=>h("div",{className:"card"},h("h3",null,title),arr.map(x=>h("div",{className:"item",key:x.id},x.name)))))}
+createRoot(document.getElementById("root")).render(h(App));
+</script></body></html>
