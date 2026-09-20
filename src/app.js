@@ -1,63 +1,29 @@
-import React, { useEffect, useState } from "https://esm.sh/react@18.3.1";
-import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
-
-import { db } from "./supabase.js";
-import { roleLabel } from "./helpers.js";
+import React from "https://esm.sh/react@18";
+import { createRoot } from "https://esm.sh/react-dom@18/client";
 
 import Login from "./pages/Login.js";
 import Dashboard from "./pages/Dashboard.js";
-import Patients from "./pages/Patients.js";
+import Patients from "./pages/Patients.js?v=8904a26";
 import Patient from "./pages/Patient.js";
 import SpecialistQueue from "./pages/SpecialistQueue.js";
 import Administration from "./pages/Administration.js";
 
-import FollowupModal from "./components/FollowupModal.js";
+import { db } from "./supabase.js";
 
 function App() {
-  const [session, setSession] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [session, setSession] = React.useState(null);
+  const [profile, setProfile] = React.useState(null);
+  const [page, setPage] = React.useState("dashboard");
+  const [selectedPatientId, setSelectedPatientId] = React.useState(null);
+  const [patients, setPatients] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
 
-  async function loadProfile(user) {
-    if (!user?.id) {
-      setProfile(null);
-      return;
-    }
-
-    const { data, error } = await db
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single();
-
-    if (error) {
-      setProfile(null);
-      setError(
-        error.message ||
-          "Unable to load your PRISM profile."
-      );
-      return;
-    }
-
-    if (!data?.active) {
-      setProfile(null);
-      setError(
-        "Your PRISM account is inactive. Please contact an administrator."
-      );
-      return;
-    }
-
-    setProfile(data);
-    setError("");
-  }
-
-  useEffect(() => {
+  React.useEffect(() => {
     let mounted = true;
 
-    async function initialize() {
+    async function loadSession() {
       const {
-        data: { session }
+        data: { session },
       } = await db.auth.getSession();
 
       if (!mounted) return;
@@ -65,34 +31,29 @@ function App() {
       setSession(session);
 
       if (session?.user) {
-        await loadProfile(session.user);
+        await loadProfile(session.user.id);
       }
 
-      if (mounted) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
 
-    initialize();
+    loadSession();
 
     const {
-      data: { subscription }
-    } = db.auth.onAuthStateChange(
-      async (_event, newSession) => {
-        if (!mounted) return;
+      data: { subscription },
+    } = db.auth.onAuthStateChange(async (_event, newSession) => {
+      if (!mounted) return;
 
-        setSession(newSession);
+      setSession(newSession);
 
-        if (newSession?.user) {
-          await loadProfile(newSession.user);
-        } else {
-          setProfile(null);
-          setError("");
-        }
-
-        setLoading(false);
+      if (newSession?.user) {
+        await loadProfile(newSession.user.id);
+      } else {
+        setProfile(null);
       }
-    );
+
+      setLoading(false);
+    });
 
     return () => {
       mounted = false;
@@ -100,442 +61,198 @@ function App() {
     };
   }, []);
 
-  async function handleLogin(user) {
-    setLoading(true);
-    setError("");
+  async function loadProfile(userId) {
+    const { data, error } = await db
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
 
-    await loadProfile(user);
-
-    setSession({
-      user
-    });
-
-    setLoading(false);
-  }
-
-  async function signOut() {
-    await db.auth.signOut();
-    setSession(null);
-    setProfile(null);
-    setError("");
-  }
-
-  if (loading) {
-    return React.createElement(
-      "div",
-      { className: "loading" },
-      "Loading PRISM..."
-    );
-  }
-
-  if (!session) {
-    return React.createElement(
-      Login,
-      {
-        onLogin: handleLogin
-      }
-    );
-  }
-
-  if (!profile) {
-    return React.createElement(
-      "div",
-      {
-        className: "login-page"
-      },
-
-      React.createElement(
-        "div",
-        {
-          className: "login-card"
-        },
-
-        React.createElement(
-          "div",
-          {
-            className: "brand"
-          },
-
-          React.createElement(
-            "div",
-            {
-              className: "brand-mark"
-            },
-            "P"
-          ),
-
-          React.createElement(
-            "div",
-            null,
-
-            React.createElement(
-              "div",
-              {
-                className: "brand-title"
-              },
-              "PRISM"
-            ),
-
-            React.createElement(
-              "div",
-              {
-                className: "brand-subtitle"
-              },
-              "Problem-oriented Inpatient Review & Structured Monitoring"
-            )
-          )
-        ),
-
-        React.createElement(
-          "div",
-          {
-            className: "error"
-          },
-          error ||
-            "Your PRISM profile could not be loaded."
-        ),
-
-        React.createElement(
-          "button",
-          {
-            className: "btn btn-secondary",
-            onClick: signOut,
-            style: {
-              width: "100%"
-            }
-          },
-          "Sign out"
-        )
-      )
-    );
-  }
-
-  return React.createElement(
-    MainApp,
-    {
-      profile,
-      user: session.user,
-      onSignOut: signOut
+    if (error) {
+      console.error("Profile loading error:", error);
+      setProfile(null);
+      return;
     }
-  );
-}
 
-function MainApp({
-  profile,
-  user,
-  onSignOut
-}) {
-  const [page, setPage] = useState("dashboard");
-
-  const [patients, setPatients] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  const [selectedPatient, setSelectedPatient] =
-    useState(null);
+    setProfile(data);
+  }
 
   async function loadPatients() {
-    setLoading(true);
-    setError("");
+    if (!session?.user) return;
 
-    const {
-      data,
-      error
-    } = await db
+    setLoading(true);
+
+    const { data, error } = await db
       .from("patients")
       .select(`
-        id,
-        patient_code,
-        full_name,
-        age,
-        sex,
-        demo,
-        created_at,
-        admissions(
+        *,
+        admissions (
           id,
-          ward_id,
-          bed_id,
           admission_datetime,
           discharge_datetime,
           status,
+          ward_id,
+          bed_id,
           responsible_mo_id,
           specialist_id,
           reason_for_admission,
           brief_summary,
-          working_diagnosis,
-          relevant_background,
-          baseline_clinical_status,
-          baseline_investigations,
-          initial_plan,
-          goals_targets,
-          created_at
+          working_diagnosis
         )
       `)
-      .order("created_at", {
-        ascending: false
-      });
+      .order("created_at", { ascending: false });
 
     if (error) {
-      setError(error.message);
+      console.error("Patients loading error:", error);
       setPatients([]);
-      setLoading(false);
-      return;
+    } else {
+      setPatients(data || []);
     }
 
-    setPatients(data || []);
     setLoading(false);
   }
 
-  useEffect(() => {
-    loadPatients();
-  }, []);
+  React.useEffect(() => {
+    if (session?.user) {
+      loadPatients();
+    }
+  }, [session]);
 
-  const activeAdmissions = patients.flatMap(
-    (patient) =>
-      (patient.admissions || [])
-        .filter(
-          (admission) =>
-            admission.status === "active"
-        )
-        .map((admission) => ({
-          patient,
-          admission
-        }))
-  );
-
-  function openPatient(patient) {
-    setSelectedPatient(patient);
+  function openPatient(patientId) {
+    setSelectedPatientId(patientId);
     setPage("patient");
   }
 
-  function navigate(nextPage) {
-    setPage(nextPage);
+  function navigate(targetPage) {
+    setSelectedPatientId(null);
+    setPage(targetPage);
   }
 
-  function renderPage() {
-    if (page === "dashboard") {
-      return React.createElement(
-        Dashboard,
-        {
-          activeAdmissions,
-          onOpenPatient: openPatient
-        }
-      );
-    }
+  async function logout() {
+    await db.auth.signOut();
+    setSession(null);
+    setProfile(null);
+    setPatients([]);
+    setPage("dashboard");
+    setSelectedPatientId(null);
+  }
 
-    if (page === "patients") {
-      return React.createElement(
-        Patients,
-        {
-          patients,
-          loading,
-          onRefresh: loadPatients,
-          onOpenPatient: openPatient
-        }
-      );
-    }
-
-    if (page === "patient") {
-      return React.createElement(
-        Patient,
-        {
-          patient: selectedPatient,
-          profile
-        }
-      );
-    }
-
-    if (page === "specialist") {
-      return React.createElement(
-        SpecialistQueue,
-        {
-          profile
-        }
-      );
-    }
-
-    if (
-      page === "administration" &&
-      profile.role === "admin"
-    ) {
-      return React.createElement(
-        Administration,
-        {
-          profile
-        }
-      );
-    }
-
-    return React.createElement(
-      Dashboard,
-      {
-        activeAdmissions,
-        onOpenPatient: openPatient
-      }
+  if (loading && !session) {
+    return (
+      <div className="app-loading">
+        <div className="loading-card">
+          <h2>PRISM</h2>
+          <p>Loading...</p>
+        </div>
+      </div>
     );
   }
 
-  return React.createElement(
-    "div",
-    {
-      className: "app"
-    },
+  if (!session) {
+    return <Login />;
+  }
 
-    React.createElement(
-      "header",
-      {
-        className: "topbar"
-      },
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="brand">
+          <div className="brand-title">PRISM</div>
+          <div className="brand-subtitle">
+            Problem-oriented Inpatient Review & Structured Monitoring
+          </div>
+        </div>
 
-      React.createElement(
-        "div",
-        {
-          className: "topbar-left"
-        },
+        <div className="topbar-user">
+          <div>
+            <strong>{profile?.display_name || "User"}</strong>
+            <div className="user-role">
+              {profile?.role || ""}
+            </div>
+          </div>
 
-        React.createElement(
-          "div",
-          {
-            className: "topbar-title"
-          },
-          "PRISM"
-        ),
+          <button
+            className="btn btn-secondary"
+            onClick={logout}
+          >
+            Logout
+          </button>
+        </div>
+      </header>
 
-        React.createElement(
-          "span",
-          {
-            className: "role-badge"
-          },
-          roleLabel(profile.role)
-        )
-      ),
+      <nav className="main-nav">
+        <button
+          className={page === "dashboard" ? "nav-active" : ""}
+          onClick={() => navigate("dashboard")}
+        >
+          Dashboard
+        </button>
 
-      React.createElement(
-        "div",
-        {
-          className: "topbar-left"
-        },
+        <button
+          className={page === "patients" ? "nav-active" : ""}
+          onClick={() => navigate("patients")}
+        >
+          Patients
+        </button>
 
-        React.createElement(
-          "span",
-          {
-            className: "small muted"
-          },
-          profile.display_name ||
-            profile.email ||
-            "User"
-        ),
+        <button
+          className={page === "specialist-queue" ? "nav-active" : ""}
+          onClick={() => navigate("specialist-queue")}
+        >
+          Specialist Queue
+        </button>
 
-        React.createElement(
-          "button",
-          {
-            className: "btn btn-secondary",
-            onClick: onSignOut
-          },
-          "Sign out"
-        )
-      )
-    ),
+        {profile?.role === "admin" && (
+          <button
+            className={page === "administration" ? "nav-active" : ""}
+            onClick={() => navigate("administration")}
+          >
+            Administration
+          </button>
+        )}
+      </nav>
 
-    React.createElement(
-      "div",
-      {
-        className: "layout"
-      },
+      <main className="main-content">
+        {page === "dashboard" && (
+          <Dashboard
+            patients={patients}
+            onOpenPatient={openPatient}
+            onNavigate={navigate}
+          />
+        )}
 
-      React.createElement(
-        "aside",
-        {
-          className: "sidebar"
-        },
+        {page === "patients" && (
+          <Patients
+            patients={patients}
+            loading={loading}
+            onRefresh={loadPatients}
+            onOpenPatient={openPatient}
+          />
+        )}
 
-        React.createElement(
-          "button",
-          {
-            className:
-              "nav-btn " +
-              (page === "dashboard"
-                ? "active"
-                : ""),
-            onClick: () =>
-              navigate("dashboard")
-          },
-          "Dashboard"
-        ),
+        {page === "patient" && selectedPatientId && (
+          <Patient
+            patientId={selectedPatientId}
+            onBack={() => navigate("patients")}
+          />
+        )}
 
-        React.createElement(
-          "button",
-          {
-            className:
-              "nav-btn " +
-              (page === "patients"
-                ? "active"
-                : ""),
-            onClick: () =>
-              navigate("patients")
-          },
-          "Patients"
-        ),
+        {page === "specialist-queue" && (
+          <SpecialistQueue />
+        )}
 
-        React.createElement(
-          "button",
-          {
-            className:
-              "nav-btn " +
-              (page === "specialist"
-                ? "active"
-                : ""),
-            onClick: () =>
-              navigate("specialist")
-          },
-          "Specialist Queue"
-        ),
-
-        profile.role === "admin"
-          ? React.createElement(
-              "button",
-              {
-                className:
-                  "nav-btn " +
-                  (page === "administration"
-                    ? "active"
-                    : ""),
-                onClick: () =>
-                  navigate(
-                    "administration"
-                  )
-              },
-              "Administration"
-            )
-          : null
-      ),
-
-      React.createElement(
-        "main",
-        {
-          className: "content"
-        },
-
-        error
-          ? React.createElement(
-              "div",
-              {
-                className: "error"
-              },
-              error
-            )
-          : null,
-
-        renderPage()
-      )
-    )
+        {page === "administration" &&
+          profile?.role === "admin" && (
+            <Administration />
+          )}
+      </main>
+    </div>
   );
 }
 
-const root = createRoot(
-  document.getElementById("root")
-);
+const rootElement = document.getElementById("root");
 
-root.render(
-  React.createElement(App)
-);
+if (!rootElement) {
+  throw new Error("PRISM root element not found.");
+}
+
+createRoot(rootElement).render(<App />);
