@@ -11,10 +11,21 @@
   color:#172033;
   background:#f5f7fa
 }
+
 *{box-sizing:border-box}
-body{margin:0}
-button,input,select,textarea{font:inherit}
-button{cursor:pointer}
+
+body{
+  margin:0;
+  background:#f5f7fa
+}
+
+button,input,select,textarea{
+  font:inherit
+}
+
+button{
+  cursor:pointer
+}
 
 header{
   background:#102a43;
@@ -28,8 +39,15 @@ header{
   z-index:5
 }
 
-.brand{font-weight:800;letter-spacing:.5px}
-.sub{font-size:12px;opacity:.75}
+.brand{
+  font-weight:800;
+  letter-spacing:.5px
+}
+
+.sub{
+  font-size:12px;
+  opacity:.75
+}
 
 main{
   max-width:1180px;
@@ -48,16 +66,33 @@ main{
   border:1px solid #dfe5ec;
   border-radius:12px;
   padding:16px;
-  box-shadow:0 1px 2px #00000008
+  box-shadow:0 1px 2px #00000008;
+  margin-bottom:14px
 }
 
-h1,h2,h3{margin:0 0 12px}
-h2{font-size:21px}
-h3{font-size:16px}
+h1,h2,h3{
+  margin:0 0 12px
+}
 
-.muted{color:#667085}
-.danger{color:#b42318}
-.ok{color:#067647}
+h2{
+  font-size:21px
+}
+
+h3{
+  font-size:16px
+}
+
+.muted{
+  color:#667085
+}
+
+.danger{
+  color:#b42318
+}
+
+.ok{
+  color:#067647
+}
 
 .badge{
   display:inline-block;
@@ -81,6 +116,11 @@ h3{font-size:16px}
   color:#172033
 }
 
+.btn.dangerBtn{
+  background:#b42318;
+  color:#fff
+}
+
 .row{
   display:flex;
   gap:8px;
@@ -88,7 +128,9 @@ h3{font-size:16px}
   flex-wrap:wrap
 }
 
-.between{justify-content:space-between}
+.between{
+  justify-content:space-between
+}
 
 nav{
   display:flex;
@@ -137,8 +179,13 @@ textarea{
   margin-top:8px
 }
 
-.click{cursor:pointer}
-.click:hover{background:#f8fafc}
+.click{
+  cursor:pointer
+}
+
+.click:hover{
+  background:#f8fafc
+}
 
 .timeline{
   border-left:3px solid #d0d5dd;
@@ -149,16 +196,34 @@ textarea{
   margin:0 0 14px
 }
 
-.small{font-size:12px}
+.small{
+  font-size:12px
+}
 
 .login{
   max-width:420px;
   margin:12vh auto
 }
 
+.errorBox{
+  background:#fff1f0;
+  border:1px solid #f1b5b0;
+  padding:10px;
+  border-radius:8px;
+  margin-top:14px
+}
+
+.successBox{
+  background:#ecfdf3;
+  border:1px solid #a6e3bd;
+  padding:10px;
+  border-radius:8px;
+  margin-top:14px
+}
+
 .notice{
-  background:#fff8e1;
-  border:1px solid #f2c94c;
+  background:#f8fafc;
+  border:1px solid #dfe5ec;
   padding:10px;
   border-radius:8px;
   font-size:13px;
@@ -172,19 +237,41 @@ table{
 
 th,td{
   text-align:left;
-  padding:8px;
+  padding:9px;
   border-bottom:1px solid #eee;
   font-size:13px
 }
 
+.loading{
+  text-align:center;
+  padding:40px;
+  color:#667085
+}
+
 @media(max-width:600px){
-  main{padding:10px}
-  .card{padding:13px}
+
+  main{
+    padding:10px
+  }
+
+  .card{
+    padding:13px
+  }
+
+  header{
+    padding:12px
+  }
+
+  table{
+    display:block;
+    overflow-x:auto
+  }
 }
 </style>
 </head>
 
 <body>
+
 <div id="root"></div>
 
 <script type="module">
@@ -200,17 +287,11 @@ import {createClient} from
 
 
 /* =========================================================
-   SUPABASE
+   SUPABASE CONFIGURATION
    ========================================================= */
 
 const SUPABASE_URL =
 "https://rcikgkdesnlfewkfeybv.supabase.co";
-
-/*
-IMPORTANT:
-This is the corrected publishable key.
-Do NOT replace it with a service_role key.
-*/
 
 const SUPABASE_KEY =
 "sb_publishable_Nm1XfSDRO1O_2qY20Q_eQ_Sfh0DiCf";
@@ -250,27 +331,37 @@ function Login(){
   const [e,setE] = useState("");
   const [p,setP] = useState("");
   const [err,setErr] = useState("");
+  const [loading,setLoading] = useState(false);
 
   async function go(ev){
 
     ev.preventDefault();
+
     setErr("");
+    setLoading(true);
 
     const {error} =
       await db.auth.signInWithPassword({
-        email:e,
+        email:e.trim(),
         password:p
       });
 
-    if(error)
+    setLoading(false);
+
+    if(error){
       setErr(error.message);
+    }
   }
 
   return h(
     "div",
     {className:"login card"},
 
-    h("h1",null,"PRISM"),
+    h(
+      "h1",
+      null,
+      "PRISM"
+    ),
 
     h(
       "p",
@@ -279,32 +370,42 @@ function Login(){
     ),
 
     h(
-      "div",
-      {className:"notice"},
-      "Temporary clinical follow-up system. Do not use as the hospital's permanent medical record."
-    ),
-
-    h(
       "form",
       {onSubmit:go},
 
-      h("label",null,"Email"),
+      h(
+        "label",
+        null,
+        "Email"
+      ),
 
-      h("input",{
-        type:"email",
-        required:true,
-        value:e,
-        onChange:x=>setE(x.target.value)
-      }),
+      h(
+        "input",
+        {
+          type:"email",
+          required:true,
+          autoComplete:"email",
+          value:e,
+          onChange:x=>setE(x.target.value)
+        }
+      ),
 
-      h("label",null,"Password"),
+      h(
+        "label",
+        null,
+        "Password"
+      ),
 
-      h("input",{
-        type:"password",
-        required:true,
-        value:p,
-        onChange:x=>setP(x.target.value)
-      }),
+      h(
+        "input",
+        {
+          type:"password",
+          required:true,
+          autoComplete:"current-password",
+          value:p,
+          onChange:x=>setP(x.target.value)
+        }
+      ),
 
       h("br"),
 
@@ -312,17 +413,33 @@ function Login(){
         "button",
         {
           className:"btn",
-          style:{width:"100%"}
+          type:"submit",
+          disabled:loading,
+          style:{
+            width:"100%",
+            opacity:loading ? .7 : 1
+          }
         },
-        "Sign in"
+        loading
+          ? "Signing in..."
+          : "Sign in"
       )
     ),
 
     err &&
       h(
-        "p",
-        {className:"danger"},
-        err
+        "div",
+        {className:"errorBox"},
+        h(
+          "strong",
+          null,
+          "Sign in failed"
+        ),
+        h(
+          "div",
+          {style:{marginTop:5}},
+          err
+        )
       )
   );
 }
@@ -336,46 +453,102 @@ function App(){
 
   const [sess,setSess] = useState(null);
   const [profile,setProfile] = useState(null);
-  const [tab,setTab] = useState("dashboard");
-  const [patients,setPatients] = useState([]);
-  const [sel,setSel] = useState(null);
-  const [msg,setMsg] = useState("");
+  const [loading,setLoading] = useState(true);
+  const [profileLoading,setProfileLoading] = useState(false);
+
+  const [tab,setTab] =
+    useState("dashboard");
+
+  const [patients,setPatients] =
+    useState([]);
+
+  const [sel,setSel] =
+    useState(null);
+
+  const [msg,setMsg] =
+    useState("");
+
+  const [error,setError] =
+    useState("");
+
+
+  /* -------------------------------------------------------
+     AUTH SESSION
+     ------------------------------------------------------- */
 
   useEffect(()=>{
 
-    db.auth.getSession()
-      .then(({data})=>{
-        setSess(data.session);
-      });
+    let mounted = true;
 
-    const x =
+    async function start(){
+
+      const {
+        data,
+        error
+      } = await db.auth.getSession();
+
+      if(!mounted)
+        return;
+
+      if(error){
+        setError(error.message);
+      }
+
+      setSess(data?.session || null);
+      setLoading(false);
+    }
+
+    start();
+
+    const {
+      data
+    } =
       db.auth.onAuthStateChange(
-        (_e,s)=>{
-          setSess(s);
+        (_event,session)=>{
+
+          if(mounted){
+            setSess(session);
+          }
         }
       );
 
     return ()=>{
-      x.data.subscription.unsubscribe();
+
+      mounted=false;
+
+      data.subscription.unsubscribe();
     };
 
   },[]);
 
 
+  /* -------------------------------------------------------
+     LOAD PROFILE
+     ------------------------------------------------------- */
+
   useEffect(()=>{
 
-    if(sess)
-      load();
+    if(sess){
+
+      loadProfileAndData();
+
+    }else{
+
+      setProfile(null);
+      setPatients([]);
+    }
 
   },[sess]);
 
 
-  async function load(){
+  async function loadProfileAndData(){
 
+    setProfileLoading(true);
     setMsg("");
+    setError("");
 
     const {
-      data:errorProfile,
+      data:profileData,
       error:profileError
     } =
       await db
@@ -384,11 +557,38 @@ function App(){
         .eq("id",sess.user.id)
         .maybeSingle();
 
-    if(profileError)
-      setMsg(profileError.message);
 
-    setProfile(errorProfile);
+    if(profileError){
 
+      setError(profileError.message);
+      setProfile(null);
+      setProfileLoading(false);
+
+      return;
+    }
+
+
+    setProfile(profileData);
+
+
+    if(!profileData){
+
+      setProfileLoading(false);
+      return;
+    }
+
+
+    await loadPatients();
+
+    setProfileLoading(false);
+  }
+
+
+  /* -------------------------------------------------------
+     LOAD PATIENTS
+     ------------------------------------------------------- */
+
+  async function loadPatients(){
 
     const r =
       await db
@@ -404,15 +604,26 @@ function App(){
             working_diagnosis
           )
         `)
-        .order("updated_at",{ascending:false});
+        .order(
+          "updated_at",
+          {ascending:false}
+        );
 
 
-    if(r.error)
-      setMsg(r.error.message);
+    if(r.error){
+
+      setError(r.error.message);
+      return;
+    }
+
 
     setPatients(r.data || []);
   }
 
+
+  /* -------------------------------------------------------
+     LOGOUT
+     ------------------------------------------------------- */
 
   async function logout(){
 
@@ -422,51 +633,128 @@ function App(){
     setProfile(null);
     setPatients([]);
     setSel(null);
+    setTab("dashboard");
   }
 
 
-  if(!sess)
-    return h(Login);
+  /* -------------------------------------------------------
+     LOADING
+     ------------------------------------------------------- */
 
-
-  if(!profile)
+  if(loading){
 
     return h(
+      "div",
+      {className:"loading"},
+      "Loading PRISM..."
+    );
+  }
+
+
+  /* -------------------------------------------------------
+     LOGIN
+     ------------------------------------------------------- */
+
+  if(!sess){
+
+    return h(Login);
+  }
+
+
+  /* -------------------------------------------------------
+     PROFILE LOADING
+     ------------------------------------------------------- */
+
+  if(profileLoading){
+
+    return h(
+      "div",
+      {className:"loading"},
+      "Loading user profile..."
+    );
+  }
+
+
+  /* -------------------------------------------------------
+     NO PROFILE
+     ------------------------------------------------------- */
+
+  if(!profile){
+
+    return h(
+
       "main",
 
       h(
         "div",
-        {className:"notice"},
+        {className:"card"},
 
-        "Signed in, but this account has no active PRISM profile. An administrator must create or activate the profile."
-      ),
+        h(
+          "h2",
+          null,
+          "Account authenticated"
+        ),
 
-      h(
-        "button",
-        {
-          className:"btn",
-          onClick:logout
-        },
-        "Sign out"
+        h(
+          "p",
+          {className:"muted"},
+          "This authentication account does not yet have an active PRISM profile."
+        ),
+
+        h(
+          "p",
+          null,
+          "Ask a PRISM administrator to create or activate the profile for this account."
+        ),
+
+        error &&
+          h(
+            "div",
+            {className:"errorBox"},
+            error
+          ),
+
+        h(
+          "button",
+          {
+            className:"btn secondary",
+            onClick:logout
+          },
+          "Sign out"
+        )
       )
     );
+  }
 
+
+  /* -------------------------------------------------------
+     ACTIVE PATIENTS
+     ------------------------------------------------------- */
 
   const active =
     patients.filter(
       p =>
         (p.admissions || [])
-          .some(a=>a.status==="active")
+          .some(
+            a=>a.status==="active"
+          )
     );
 
 
-  const open = p => {
+  /* -------------------------------------------------------
+     OPEN PATIENT
+     ------------------------------------------------------- */
+
+  const open = p =>{
 
     setSel(p);
     setTab("patient");
-
   };
 
+
+  /* -------------------------------------------------------
+     CONTENT
+     ------------------------------------------------------- */
 
   let content;
 
@@ -475,110 +763,128 @@ function App(){
      DASHBOARD
      ======================================================= */
 
-  if(tab==="dashboard")
+  if(tab==="dashboard"){
 
-    content = h(
-      "div",
-
+    content =
       h(
+
         "div",
-        {className:"row between"},
 
         h(
           "div",
+          {className:"row between"},
 
-          h("h2",null,"Dashboard"),
+          h(
+            "div",
+
+            h(
+              "h2",
+              null,
+              "Dashboard"
+            ),
+
+            h(
+              "p",
+              {className:"muted"},
+              "Current inpatient overview"
+            )
+          ),
+
+          h(
+            "button",
+            {
+              className:"btn",
+              onClick:loadPatients
+            },
+            "Refresh"
+          )
+        ),
+
+
+        h(
+          "div",
+          {className:"grid"},
+
+          h(
+            "div",
+            {className:"card"},
+
+            h(
+              "h3",
+              null,
+              "Active admissions"
+            ),
+
+            h(
+              "h2",
+              null,
+              active.length
+            )
+          ),
+
+
+          h(
+            "div",
+            {className:"card"},
+
+            h(
+              "h3",
+              null,
+              "Authorized patients"
+            ),
+
+            h(
+              "h2",
+              null,
+              patients.length
+            )
+          )
+        ),
+
+
+        h(
+          "div",
+          {className:"card"},
+
+          h(
+            "h3",
+            null,
+            "Patients"
+          ),
+
+          active.length
+
+          ?
+
+          active.map(
+            p =>
+              h(
+                Card,
+                {
+                  key:p.id,
+                  p,
+                  onClick:()=>open(p)
+                }
+              )
+          )
+
+          :
 
           h(
             "p",
             {className:"muted"},
-            "Current inpatient overview"
-          )
-        ),
-
-        h(
-          "button",
-          {
-            className:"btn",
-            onClick:load
-          },
-          "Refresh"
-        )
-      ),
-
-      h(
-        "div",
-        {className:"grid"},
-
-        h(
-          "div",
-          {className:"card"},
-
-          h("h3",null,"Active admissions"),
-
-          h(
-            "h2",
-            null,
-            active.length
-          )
-        ),
-
-        h(
-          "div",
-          {className:"card"},
-
-          h("h3",null,"Authorized patients"),
-
-          h(
-            "h2",
-            null,
-            patients.length
+            "No active admissions."
           )
         )
-      ),
-
-      h(
-        "div",
-        {className:"card"},
-
-        h(
-          "h3",
-          null,
-          "Patients"
-        ),
-
-        active.length
-
-        ?
-
-        active.map(
-          p =>
-            h(
-              Card,
-              {
-                key:p.id,
-                p,
-                onClick:()=>open(p)
-              }
-            )
-        )
-
-        :
-
-        h(
-          "p",
-          {className:"muted"},
-          "No active admissions."
-        )
-      )
-    );
+      );
+  }
 
 
   /* =======================================================
-     PATIENT LIST
+     PATIENTS
      ======================================================= */
 
-  else if(tab==="patients")
+  else if(tab==="patients"){
 
     content =
       h(
@@ -586,9 +892,10 @@ function App(){
         {
           patients,
           onClick:open,
-          onRefresh:load
+          onRefresh:loadPatients
         }
       );
+  }
 
 
   /* =======================================================
@@ -598,7 +905,7 @@ function App(){
   else if(
     tab==="patient" &&
     sel
-  )
+  ){
 
     content =
       h(
@@ -608,10 +915,11 @@ function App(){
           profile,
           onBack:()=>{
             setTab("patients");
-            load();
+            loadPatients();
           }
         }
       );
+  }
 
 
   /* =======================================================
@@ -621,41 +929,48 @@ function App(){
   else if(
     tab==="admin" &&
     profile.role==="admin"
-  )
+  ){
 
-    content = h(Admin);
+    content =
+      h(Admin);
+  }
 
 
   /* =======================================================
      SPECIALIST QUEUE
      ======================================================= */
 
-  else
+  else{
 
-    content = h(
-      "div",
-      {className:"card"},
-
+    content =
       h(
-        "h2",
-        null,
-        "Specialist queue"
-      ),
+        "div",
+        {className:"card"},
 
-      h(
-        "p",
-        {className:"muted"},
-        "Specialist requests and reviews are stored in the shared database and are visible only to authorized users."
-      )
-    );
+        h(
+          "h2",
+          null,
+          "Specialist queue"
+        ),
 
+        h(
+          "p",
+          {className:"muted"},
+          "Specialist requests and reviews will appear here."
+        )
+      );
+  }
+
+
+  /* =======================================================
+     APPLICATION SHELL
+     ======================================================= */
 
   return h(
 
     "div",
 
     h(
-
       "header",
 
       h(
@@ -687,7 +1002,6 @@ function App(){
 
 
     h(
-
       "main",
 
       h(
@@ -697,19 +1011,27 @@ function App(){
           "dashboard",
           "patients",
           "queue",
+
           ...(profile.role==="admin"
             ? ["admin"]
             : [])
+
         ].map(
 
           x =>
+
             h(
               "button",
               {
                 key:x,
+
                 className:
                   "navbtn " +
-                  (tab===x ? "active" : ""),
+                  (
+                    tab===x
+                    ? "active"
+                    : ""
+                  ),
 
                 onClick:()=>{
                   setTab(x);
@@ -718,17 +1040,30 @@ function App(){
 
               x==="queue"
                 ? "Specialist queue"
-                : x[0].toUpperCase()+x.slice(1)
+                : x[0].toUpperCase()+
+                  x.slice(1)
             )
         )
       ),
 
+
+      error &&
+
+        h(
+          "div",
+          {className:"errorBox"},
+          error
+        ),
+
+
       msg &&
+
         h(
           "div",
           {className:"notice"},
           msg
         ),
+
 
       content
     )
@@ -740,11 +1075,16 @@ function App(){
    PATIENT CARD
    ========================================================= */
 
-function Card({p,onClick}){
+function Card({
+  p,
+  onClick
+}){
 
   const a =
     (p.admissions || [])
-      .find(x=>x.status==="active");
+      .find(
+        x=>x.status==="active"
+      );
 
 
   return h(
@@ -779,14 +1119,20 @@ function Card({p,onClick}){
       "div",
       null,
 
-      (p.full_name || "Unnamed patient") +
+      (p.full_name ||
+       "Unnamed patient") +
+
       " • " +
+
       p.age +
+
       " / " +
+
       p.sex
     ),
 
     a &&
+
       h(
         "div",
         {className:"muted small"},
@@ -798,7 +1144,7 @@ function Card({p,onClick}){
 
 
 /* =========================================================
-   PATIENTS
+   PATIENT LIST
    ========================================================= */
 
 function Patients({
@@ -807,15 +1153,19 @@ function Patients({
   onRefresh
 }){
 
-  const [q,setQ] = useState("");
+  const [q,setQ] =
+    useState("");
 
 
   const list =
     patients.filter(
+
       p =>
         JSON.stringify(p)
           .toLowerCase()
-          .includes(q.toLowerCase())
+          .includes(
+            q.toLowerCase()
+          )
     );
 
 
@@ -824,7 +1174,6 @@ function Patients({
     "div",
 
     h(
-
       "div",
       {className:"row between"},
 
@@ -863,17 +1212,22 @@ function Patients({
       "div",
       {
         className:"grid",
-        style:{marginTop:12}
+        style:{
+          marginTop:12
+        }
       },
 
       list.map(
+
         p =>
+
           h(
             Card,
             {
               key:p.id,
               p,
-              onClick:()=>onClick(p)
+              onClick:
+                ()=>onClick(p)
             }
           )
       )
@@ -894,17 +1248,30 @@ function Patient({
 
   const a =
     (p.admissions || [])
-      .find(x=>x.status==="active")
+      .find(
+        x=>x.status==="active"
+      )
       ||
     (p.admissions || [])[0];
 
 
-  const [ad,setAd] = useState(null);
-  const [updates,setUpdates] = useState([]);
-  const [reviews,setReviews] = useState([]);
-  const [form,setForm] = useState(blank);
-  const [show,setShow] = useState(false);
-  const [notice,setNotice] = useState("");
+  const [ad,setAd] =
+    useState(null);
+
+  const [updates,setUpdates] =
+    useState([]);
+
+  const [reviews,setReviews] =
+    useState([]);
+
+  const [form,setForm] =
+    useState(blank);
+
+  const [show,setShow] =
+    useState(false);
+
+  const [notice,setNotice] =
+    useState("");
 
 
   useEffect(()=>{
@@ -935,8 +1302,13 @@ function Patient({
 
       db
         .from("daily_updates")
-        .select("*,profiles(display_name)")
-        .eq("admission_id",a.id)
+        .select(
+          "*,profiles(display_name)"
+        )
+        .eq(
+          "admission_id",
+          a.id
+        )
         .order(
           "occurred_at",
           {ascending:false}
@@ -944,13 +1316,17 @@ function Patient({
 
       db
         .from("specialist_reviews")
-        .select("*,profiles(display_name)")
-        .eq("admission_id",a.id)
+        .select(
+          "*,profiles(display_name)"
+        )
+        .eq(
+          "admission_id",
+          a.id
+        )
         .order(
           "reviewed_at",
           {ascending:false}
         )
-
     ]);
 
 
@@ -987,7 +1363,9 @@ function Patient({
 
     if(error){
 
-      setNotice(error.message);
+      setNotice(
+        error.message
+      );
 
     }else{
 
@@ -1004,7 +1382,7 @@ function Patient({
   }
 
 
-  if(!a)
+  if(!a){
 
     return h(
       "div",
@@ -1025,6 +1403,7 @@ function Patient({
         "Back"
       )
     );
+  }
 
 
   return h(
@@ -1042,7 +1421,6 @@ function Patient({
 
 
     h(
-
       "div",
       {
         className:"card",
@@ -1059,7 +1437,10 @@ function Patient({
 
           p.patient_code +
           " — " +
-          (p.full_name || "Patient")
+          (
+            p.full_name ||
+            "Patient"
+          )
         ),
 
         h(
@@ -1097,7 +1478,8 @@ function Patient({
       h(
         "p",
         null,
-        ad?.reason_for_admission || "—"
+        ad?.reason_for_admission ||
+        "—"
       ),
 
 
@@ -1110,7 +1492,8 @@ function Patient({
       h(
         "p",
         null,
-        ad?.working_diagnosis || "—"
+        ad?.working_diagnosis ||
+        "—"
       ),
 
 
@@ -1123,7 +1506,8 @@ function Patient({
       h(
         "p",
         null,
-        ad?.baseline_clinical_status || "—"
+        ad?.baseline_clinical_status ||
+        "—"
       ),
 
 
@@ -1136,13 +1520,13 @@ function Patient({
       h(
         "p",
         null,
-        ad?.initial_plan || "—"
+        ad?.initial_plan ||
+        "—"
       )
     ),
 
 
     h(
-
       "div",
       {className:"card"},
 
@@ -1171,13 +1555,16 @@ function Patient({
 
 
       notice &&
+
         h(
           "p",
           {
             className:
-              notice.includes("saved")
-                ? "ok"
-                : "danger"
+              notice.includes(
+                "successfully"
+              )
+              ? "ok"
+              : "danger"
           },
           notice
         ),
@@ -1186,7 +1573,6 @@ function Patient({
       show &&
 
         h(
-
           "form",
           {onSubmit:save},
 
@@ -1195,14 +1581,16 @@ function Patient({
             k =>
 
               h(
-
                 "div",
                 {key:k},
 
                 h(
                   "label",
                   null,
-                  k.replaceAll("_"," ")
+                  k.replaceAll(
+                    "_",
+                    " "
+                  )
                 ),
 
                 k==="clinical_stability"
@@ -1217,7 +1605,8 @@ function Patient({
                     onChange:e=>
                       setForm({
                         ...form,
-                        [k]:e.target.value
+                        [k]:
+                          e.target.value
                       })
                   },
 
@@ -1228,7 +1617,8 @@ function Patient({
                     "unstable"
                   ].map(
 
-                    v =>
+                    v=>
+
                       h(
                         "option",
                         {
@@ -1250,7 +1640,8 @@ function Patient({
                     onChange:e=>
                       setForm({
                         ...form,
-                        [k]:e.target.value
+                        [k]:
+                          e.target.value
                       })
                   }
                 )
@@ -1270,20 +1661,19 @@ function Patient({
 
 
       h(
-
         "div",
         {
           className:"timeline",
-          style:{marginTop:14}
+          style:{
+            marginTop:14
+          }
         },
-
 
         updates.map(
 
           u =>
 
             h(
-
               "div",
               {
                 className:"event",
@@ -1306,6 +1696,7 @@ function Patient({
               ),
 
               u.clinical_changes &&
+
                 h(
                   "p",
                   null,
@@ -1313,67 +1704,81 @@ function Patient({
                 ),
 
               u.problems_assessment &&
+
                 h(
                   "p",
                   null,
+
                   h(
                     "strong",
                     null,
                     "Problems / Assessment: "
                   ),
+
                   u.problems_assessment
                 ),
 
               u.response &&
+
                 h(
                   "p",
                   null,
+
                   h(
                     "strong",
                     null,
                     "Response: "
                   ),
+
                   u.response
                 ),
 
               u.management_changes &&
+
                 h(
                   "p",
                   null,
+
                   h(
                     "strong",
                     null,
                     "Management changes: "
                   ),
+
                   u.management_changes
                 ),
 
               u.remaining_inpatient_needs &&
+
                 h(
                   "p",
                   null,
+
                   h(
                     "strong",
                     null,
                     "Remaining inpatient needs: "
                   ),
+
                   u.remaining_inpatient_needs
                 ),
 
               u.recommendation_next_steps &&
+
                 h(
                   "p",
                   {className:"muted"},
+
                   h(
                     "strong",
                     null,
                     "Next steps: "
                   ),
+
                   u.recommendation_next_steps
                 )
             )
         ),
-
 
         !updates.length &&
 
@@ -1387,7 +1792,6 @@ function Patient({
 
 
     h(
-
       "div",
       {className:"card"},
 
@@ -1397,13 +1801,11 @@ function Patient({
         "Specialist reviews"
       ),
 
-
       reviews.map(
 
         r =>
 
           h(
-
             "div",
             {
               className:"item",
@@ -1433,7 +1835,6 @@ function Patient({
           )
       ),
 
-
       !reviews.length &&
 
         h(
@@ -1447,59 +1848,111 @@ function Patient({
 
 
 /* =========================================================
-   ADMIN
+   ADMIN PAGE
    ========================================================= */
 
 function Admin(){
 
-  const [p,setP] = useState([]);
-  const [d,setD] = useState([]);
-  const [w,setW] = useState([]);
-  const [b,setB] = useState([]);
+  const [profiles,setProfiles] =
+    useState([]);
+
+  const [departments,setDepartments] =
+    useState([]);
+
+  const [wards,setWards] =
+    useState([]);
+
+  const [beds,setBeds] =
+    useState([]);
+
+  const [loading,setLoading] =
+    useState(true);
+
+  const [error,setError] =
+    useState("");
+
+
+  async function load(){
+
+    setLoading(true);
+    setError("");
+
+
+    const [
+      p,
+      d,
+      w,
+      b
+    ] = await Promise.all([
+
+      db
+        .from("profiles")
+        .select("*")
+        .order("created_at"),
+
+      db
+        .from("departments")
+        .select("*")
+        .order("name"),
+
+      db
+        .from("wards")
+        .select("*")
+        .order("name"),
+
+      db
+        .from("beds")
+        .select("*")
+        .order("name")
+    ]);
+
+
+    if(p.error)
+      setError(p.error.message);
+
+    else if(d.error)
+      setError(d.error.message);
+
+    else if(w.error)
+      setError(w.error.message);
+
+    else if(b.error)
+      setError(b.error.message);
+
+
+    setProfiles(
+      p.data || []
+    );
+
+    setDepartments(
+      d.data || []
+    );
+
+    setWards(
+      w.data || []
+    );
+
+    setBeds(
+      b.data || []
+    );
+
+    setLoading(false);
+  }
 
 
   useEffect(()=>{
-
-    (async()=>{
-
-      const [
-        x,
-        y,
-        z,
-        q
-      ] = await Promise.all([
-
-        db
-          .from("profiles")
-          .select("*")
-          .order("created_at"),
-
-        db
-          .from("departments")
-          .select("*")
-          .order("name"),
-
-        db
-          .from("wards")
-          .select("*")
-          .order("name"),
-
-        db
-          .from("beds")
-          .select("*")
-          .order("name")
-
-      ]);
-
-
-      setP(x.data || []);
-      setD(y.data || []);
-      setW(z.data || []);
-      setB(q.data || []);
-
-    })();
-
+    load();
   },[]);
+
+
+  if(loading){
+
+    return h(
+      "div",
+      {className:"loading"},
+      "Loading administration..."
+    );
+  }
 
 
   return h(
@@ -1507,34 +1960,57 @@ function Admin(){
     "div",
 
     h(
-      "h2",
-      null,
-      "Administration"
-    ),
-
-
-    h(
       "div",
-      {className:"notice"},
+      {className:"row between"},
 
-      "Authentication and password administration should use the secure Supabase administration workflow. This page displays PRISM profiles and reference data."
+      h(
+        "h2",
+        null,
+        "Administration"
+      ),
+
+      h(
+        "button",
+        {
+          className:"btn secondary",
+          onClick:load
+        },
+        "Refresh"
+      )
     ),
 
 
-    h(
+    error &&
 
+      h(
+        "div",
+        {className:"errorBox"},
+        error
+      ),
+
+
+    h(
       "div",
       {className:"card"},
 
       h(
         "h3",
         null,
-        "Profiles"
+        "PRISM Users"
+      ),
+
+      h(
+        "p",
+        {className:"muted small"},
+        "Authentication accounts are managed through Supabase Authentication. PRISM profiles define the application role."
       ),
 
 
-      h(
+      profiles.length
 
+      ?
+
+      h(
         "table",
 
         h(
@@ -1543,9 +2019,29 @@ function Admin(){
           h(
             "tr",
 
-            h("th",null,"Email"),
-            h("th",null,"Role"),
-            h("th",null,"Active")
+            h(
+              "th",
+              null,
+              "Name"
+            ),
+
+            h(
+              "th",
+              null,
+              "Email"
+            ),
+
+            h(
+              "th",
+              null,
+              "Role"
+            ),
+
+            h(
+              "th",
+              null,
+              "Active"
+            )
           )
         ),
 
@@ -1553,84 +2049,89 @@ function Admin(){
         h(
           "tbody",
 
-          p.map(
+          profiles.map(
 
             x =>
 
               h(
-
                 "tr",
                 {key:x.id},
 
                 h(
                   "td",
                   null,
-                  x.email
+                  x.display_name ||
+                  "—"
                 ),
 
                 h(
                   "td",
                   null,
-                  x.role
+                  x.email ||
+                  "—"
                 ),
 
                 h(
                   "td",
                   null,
-                  String(x.active)
+
+                  h(
+                    "span",
+                    {className:"badge"},
+                    x.role
+                  )
+                ),
+
+                h(
+                  "td",
+                  null,
+                  x.active
+                    ? "Active"
+                    : "Inactive"
                 )
               )
           )
         )
       )
+
+      :
+
+      h(
+        "p",
+        {className:"muted"},
+        "No PRISM profiles found."
+      )
     ),
 
 
     h(
-
       "div",
       {
-        className:"grid",
-        style:{marginTop:12}
+        className:"grid"
       },
 
+      h(
+        ReferenceCard,
+        {
+          title:"Departments",
+          items:departments
+        }
+      ),
 
-      [
-        ["Departments",d],
-        ["Wards",w],
-        ["Beds",b]
-      ].map(
+      h(
+        ReferenceCard,
+        {
+          title:"Wards",
+          items:wards
+        }
+      ),
 
-        ([title,arr]) =>
-
-          h(
-
-            "div",
-            {
-              className:"card",
-              key:title
-            },
-
-            h(
-              "h3",
-              null,
-              title
-            ),
-
-            arr.map(
-
-              x =>
-
-                h(
-                  "div",
-                  {
-                    className:"item",
-                    key:x.id
-                  },
-                  x.name
-                )
-            )
-          )
+      h(
+        ReferenceCard,
+        {
+          title:"Beds",
+          items:beds
+        }
       )
     )
   );
@@ -1638,7 +2139,56 @@ function Admin(){
 
 
 /* =========================================================
-   START
+   REFERENCE DATA CARD
+   ========================================================= */
+
+function ReferenceCard({
+  title,
+  items
+}){
+
+  return h(
+
+    "div",
+    {className:"card"},
+
+    h(
+      "h3",
+      null,
+      title
+    ),
+
+    items.length
+
+    ?
+
+    items.map(
+
+      x =>
+
+        h(
+          "div",
+          {
+            className:"item",
+            key:x.id
+          },
+          x.name
+        )
+    )
+
+    :
+
+    h(
+      "p",
+      {className:"muted"},
+      "No entries yet."
+    )
+  );
+}
+
+
+/* =========================================================
+   START APPLICATION
    ========================================================= */
 
 createRoot(
@@ -1648,5 +2198,6 @@ createRoot(
 );
 
 </script>
+
 </body>
-</html>
+  </html>
