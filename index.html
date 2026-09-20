@@ -1,2203 +1,2800 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PRISM — Clinical Documentation</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#0f766e" />
 
-<style>
-:root{
-  font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-  color:#172033;
-  background:#f5f7fa
-}
+  <title>PRISM — Clinical Documentation</title>
 
-*{box-sizing:border-box}
+  <style>
+    * {
+      box-sizing: border-box;
+    }
 
-body{
-  margin:0;
-  background:#f5f7fa
-}
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      font-family:
+        Inter,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Arial,
+        sans-serif;
+      background: #f4f7f9;
+      color: #17202a;
+    }
 
-button,input,select,textarea{
-  font:inherit
-}
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
 
-button{
-  cursor:pointer
-}
+    button {
+      cursor: pointer;
+    }
 
-header{
-  background:#102a43;
-  color:#fff;
-  padding:14px 18px;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  position:sticky;
-  top:0;
-  z-index:5
-}
+    .app {
+      min-height: 100vh;
+    }
 
-.brand{
-  font-weight:800;
-  letter-spacing:.5px
-}
+    .login-page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background:
+        linear-gradient(180deg, #eef8f7 0%, #f7fafb 100%);
+    }
 
-.sub{
-  font-size:12px;
-  opacity:.75
-}
+    .login-card {
+      width: 100%;
+      max-width: 430px;
+      background: white;
+      border: 1px solid #dce5e8;
+      border-radius: 18px;
+      padding: 32px;
+      box-shadow: 0 12px 40px rgba(20, 40, 50, .08);
+    }
 
-main{
-  max-width:1180px;
-  margin:auto;
-  padding:18px
-}
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
 
-.grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
-  gap:14px
-}
+    .brand-mark {
+      width: 46px;
+      height: 46px;
+      border-radius: 12px;
+      background: #0f766e;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 20px;
+    }
 
-.card{
-  background:#fff;
-  border:1px solid #dfe5ec;
-  border-radius:12px;
-  padding:16px;
-  box-shadow:0 1px 2px #00000008;
-  margin-bottom:14px
-}
+    .brand-title {
+      font-size: 25px;
+      font-weight: 800;
+      letter-spacing: -.5px;
+    }
 
-h1,h2,h3{
-  margin:0 0 12px
-}
+    .brand-subtitle {
+      color: #64748b;
+      font-size: 13px;
+      margin-top: 2px;
+    }
 
-h2{
-  font-size:21px
-}
+    h1, h2, h3, p {
+      margin-top: 0;
+    }
 
-h3{
-  font-size:16px
-}
+    .login-title {
+      font-size: 22px;
+      margin-bottom: 22px;
+    }
 
-.muted{
-  color:#667085
-}
+    .field {
+      margin-bottom: 16px;
+    }
 
-.danger{
-  color:#b42318
-}
+    .field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 7px;
+      color: #334155;
+    }
 
-.ok{
-  color:#067647
-}
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 11px 12px;
+      background: white;
+      color: #17202a;
+      outline: none;
+    }
 
-.badge{
-  display:inline-block;
-  padding:4px 8px;
-  border-radius:999px;
-  background:#eef2f6;
-  font-size:12px;
-  margin:2px
-}
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: #0f766e;
+      box-shadow: 0 0 0 3px rgba(15,118,110,.10);
+    }
 
-.btn{
-  border:0;
-  border-radius:8px;
-  padding:9px 13px;
-  background:#155eef;
-  color:white
-}
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
 
-.btn.secondary{
-  background:#e9eef5;
-  color:#172033
-}
+    .btn {
+      border: 0;
+      border-radius: 10px;
+      padding: 11px 16px;
+      font-weight: 700;
+      transition: .15s ease;
+    }
 
-.btn.dangerBtn{
-  background:#b42318;
-  color:#fff
-}
+    .btn-primary {
+      background: #0f766e;
+      color: white;
+    }
 
-.row{
-  display:flex;
-  gap:8px;
-  align-items:center;
-  flex-wrap:wrap
-}
+    .btn-primary:hover {
+      background: #0b625c;
+    }
 
-.between{
-  justify-content:space-between
-}
+    .btn-secondary {
+      background: #e8eef0;
+      color: #25343a;
+    }
 
-nav{
-  display:flex;
-  gap:6px;
-  overflow:auto;
-  margin-bottom:16px
-}
+    .btn-danger {
+      background: #fee2e2;
+      color: #991b1b;
+    }
 
-.navbtn{
-  white-space:nowrap;
-  border:1px solid #d0d5dd;
-  background:#fff;
-  border-radius:8px;
-  padding:8px 11px
-}
+    .btn:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
 
-.navbtn.active{
-  background:#102a43;
-  color:#fff
-}
+    .error {
+      background: #fff1f2;
+      border: 1px solid #fecdd3;
+      color: #9f1239;
+      border-radius: 10px;
+      padding: 11px 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
 
-label{
-  display:block;
-  font-size:12px;
-  font-weight:700;
-  margin:10px 0 5px
-}
+    .success {
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      color: #065f46;
+      border-radius: 10px;
+      padding: 11px 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
 
-input,select,textarea{
-  width:100%;
-  border:1px solid #cfd6df;
-  border-radius:8px;
-  padding:9px;
-  background:#fff
-}
+    .loading {
+      padding: 40px;
+      text-align: center;
+      color: #64748b;
+    }
 
-textarea{
-  min-height:82px;
-  resize:vertical
-}
+    .topbar {
+      height: 64px;
+      background: white;
+      border-bottom: 1px solid #dce5e8;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
 
-.item{
-  padding:12px;
-  border:1px solid #e4e7ec;
-  border-radius:9px;
-  margin-top:8px
-}
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
 
-.click{
-  cursor:pointer
-}
+    .topbar-title {
+      font-weight: 800;
+      font-size: 18px;
+    }
 
-.click:hover{
-  background:#f8fafc
-}
+    .role-badge {
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #e6fffb;
+      color: #0f766e;
+      text-transform: uppercase;
+    }
 
-.timeline{
-  border-left:3px solid #d0d5dd;
-  padding-left:14px
-}
+    .layout {
+      display: flex;
+      min-height: calc(100vh - 64px);
+    }
 
-.event{
-  margin:0 0 14px
-}
+    .sidebar {
+      width: 220px;
+      background: white;
+      border-right: 1px solid #dce5e8;
+      padding: 16px 12px;
+      flex-shrink: 0;
+    }
 
-.small{
-  font-size:12px
-}
+    .nav-btn {
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      padding: 11px 12px;
+      border-radius: 9px;
+      margin-bottom: 5px;
+      color: #475569;
+      font-weight: 650;
+    }
 
-.login{
-  max-width:420px;
-  margin:12vh auto
-}
+    .nav-btn:hover,
+    .nav-btn.active {
+      background: #eaf7f5;
+      color: #0f766e;
+    }
 
-.errorBox{
-  background:#fff1f0;
-  border:1px solid #f1b5b0;
-  padding:10px;
-  border-radius:8px;
-  margin-top:14px
-}
+    .content {
+      flex: 1;
+      padding: 22px;
+      max-width: 1500px;
+      margin: 0 auto;
+      width: 100%;
+    }
 
-.successBox{
-  background:#ecfdf3;
-  border:1px solid #a6e3bd;
-  padding:10px;
-  border-radius:8px;
-  margin-top:14px
-}
+    .page-title {
+      font-size: 25px;
+      font-weight: 800;
+      margin-bottom: 5px;
+    }
 
-.notice{
-  background:#f8fafc;
-  border:1px solid #dfe5ec;
-  padding:10px;
-  border-radius:8px;
-  font-size:13px;
-  margin-bottom:14px
-}
+    .page-subtitle {
+      color: #64748b;
+      font-size: 14px;
+      margin-bottom: 22px;
+    }
 
-table{
-  width:100%;
-  border-collapse:collapse
-}
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
 
-th,td{
-  text-align:left;
-  padding:9px;
-  border-bottom:1px solid #eee;
-  font-size:13px
-}
+    .grid-4 {
+      grid-template-columns: repeat(4, 1fr);
+    }
 
-.loading{
-  text-align:center;
-  padding:40px;
-  color:#667085
-}
+    .grid-3 {
+      grid-template-columns: repeat(3, 1fr);
+    }
 
-@media(max-width:600px){
+    .grid-2 {
+      grid-template-columns: repeat(2, 1fr);
+    }
 
-  main{
-    padding:10px
-  }
+    .card {
+      background: white;
+      border: 1px solid #dce5e8;
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
 
-  .card{
-    padding:13px
-  }
+    .stat-number {
+      font-size: 28px;
+      font-weight: 800;
+      margin-top: 5px;
+    }
 
-  header{
-    padding:12px
-  }
+    .stat-label {
+      color: #64748b;
+      font-size: 13px;
+    }
 
-  table{
-    display:block;
-    overflow-x:auto
-  }
-}
-</style>
+    .section-title {
+      font-size: 17px;
+      font-weight: 800;
+      margin-bottom: 14px;
+    }
+
+    .patient-card {
+      cursor: pointer;
+      transition: .15s ease;
+    }
+
+    .patient-card:hover {
+      border-color: #8ccbc5;
+      transform: translateY(-1px);
+    }
+
+    .patient-name {
+      font-size: 17px;
+      font-weight: 800;
+    }
+
+    .muted {
+      color: #64748b;
+    }
+
+    .small {
+      font-size: 12px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .wrap {
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .badge-stable {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .badge-improving {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .badge-deteriorating {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .badge-unstable {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .timeline {
+      position: relative;
+      margin-top: 10px;
+    }
+
+    .timeline-item {
+      border-left: 3px solid #b8dcd8;
+      padding: 0 0 18px 18px;
+      margin-left: 7px;
+    }
+
+    .timeline-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #0f766e;
+      position: absolute;
+      margin-left: -25px;
+      margin-top: 4px;
+    }
+
+    .timeline-title {
+      font-weight: 800;
+      margin-bottom: 3px;
+    }
+
+    .timeline-body {
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      padding: 10px;
+      border-bottom: 1px solid #e2e8f0;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: #475569;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .empty {
+      padding: 30px;
+      text-align: center;
+      color: #64748b;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 15px;
+    }
+
+    @media (max-width: 900px) {
+      .grid-4 {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .sidebar {
+        width: 185px;
+      }
+    }
+
+    @media (max-width: 700px) {
+      .layout {
+        display: block;
+      }
+
+      .sidebar {
+        width: 100%;
+        border-right: 0;
+        border-bottom: 1px solid #dce5e8;
+        display: flex;
+        overflow-x: auto;
+        padding: 8px;
+        gap: 5px;
+      }
+
+      .nav-btn {
+        white-space: nowrap;
+        width: auto;
+        margin: 0;
+      }
+
+      .content {
+        padding: 14px;
+      }
+
+      .grid-4,
+      .grid-3,
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar {
+        padding: 0 12px;
+      }
+
+      .topbar-title {
+        font-size: 16px;
+      }
+
+      .login-card {
+        padding: 24px;
+      }
+    }
+  </style>
 </head>
 
 <body>
+  <div id="root"></div>
 
-<div id="root"></div>
+  <script type="module">
+    import React, { useEffect, useMemo, useState } from "https://esm.sh/react@18.3.1";
+    import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-<script type="module">
+    /*
+      PRISM
+      Supabase configuration
+    */
 
-import React,{useEffect,useState} from
-"https://esm.sh/react@18.3.1";
+    const SUPABASE_URL =
+      "https://rcikgkdesnlfewkfeybv.supabase.co";
 
-import {createRoot} from
-"https://esm.sh/react-dom@18.3.1/client";
+    const SUPABASE_KEY =
+      "sb_publishable_Nm1XfSDRO1O_2qY20Q_eQ_Sfh0DiCf";
 
-import {createClient} from
-"https://esm.sh/@supabase/supabase-js@2";
+    const db = createClient(
+      SUPABASE_URL,
+      SUPABASE_KEY
+    );
 
+    const h = React.createElement;
 
-/* =========================================================
-   SUPABASE CONFIGURATION
-   ========================================================= */
+    function formatDate(value) {
+      if (!value) return "—";
 
-const SUPABASE_URL =
-"https://rcikgkdesnlfewkfeybv.supabase.co";
-
-const SUPABASE_KEY =
-"sb_publishable_Nm1XfSDRO1O_2qY20Q_eQ_Sfh0DiCf";
-
-const db = createClient(
-  SUPABASE_URL,
-  SUPABASE_KEY
-);
-
-const h = React.createElement;
-
-
-/* =========================================================
-   EMPTY DAILY FOLLOW-UP
-   ========================================================= */
-
-const blank = {
-  clinical_changes:"",
-  new_results:"",
-  problems_assessment:"",
-  clinical_stability:"stable",
-  response:"",
-  management_changes:"",
-  remaining_inpatient_needs:"",
-  why_still_admitted:"",
-  recommendation_next_steps:"",
-  escalation_red_flags:""
-};
-
-
-/* =========================================================
-   LOGIN
-   ========================================================= */
-
-function Login(){
-
-  const [e,setE] = useState("");
-  const [p,setP] = useState("");
-  const [err,setErr] = useState("");
-  const [loading,setLoading] = useState(false);
-
-  async function go(ev){
-
-    ev.preventDefault();
-
-    setErr("");
-    setLoading(true);
-
-    const {error} =
-      await db.auth.signInWithPassword({
-        email:e.trim(),
-        password:p
-      });
-
-    setLoading(false);
-
-    if(error){
-      setErr(error.message);
+      try {
+        return new Date(value).toLocaleString();
+      } catch {
+        return value;
+      }
     }
-  }
 
-  return h(
-    "div",
-    {className:"login card"},
+    function roleLabel(role) {
+      if (role === "medical_officer") return "Medical Officer";
+      if (role === "specialist") return "Specialist";
+      if (role === "admin") return "Admin";
+      return role || "User";
+    }
 
-    h(
-      "h1",
-      null,
-      "PRISM"
-    ),
+    function stabilityClass(value) {
+      return {
+        stable: "badge-stable",
+        improving: "badge-improving",
+        deteriorating: "badge-deteriorating",
+        unstable: "badge-unstable"
+      }[value] || "";
+    }
 
-    h(
-      "p",
-      {className:"muted"},
-      "Problem-oriented Inpatient Review & Structured Monitoring"
-    ),
+    function Login({ onLogin }) {
+      const [email, setEmail] = useState("");
+      const [password, setPassword] = useState("");
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState("");
 
-    h(
-      "form",
-      {onSubmit:go},
+      async function submit(e) {
+        e.preventDefault();
 
-      h(
-        "label",
-        null,
-        "Email"
-      ),
+        setError("");
 
-      h(
-        "input",
-        {
-          type:"email",
-          required:true,
-          autoComplete:"email",
-          value:e,
-          onChange:x=>setE(x.target.value)
+        if (!email || !password) {
+          setError("Please enter both email and password.");
+          return;
         }
-      ),
 
-      h(
-        "label",
-        null,
-        "Password"
-      ),
+        setLoading(true);
 
-      h(
-        "input",
-        {
-          type:"password",
-          required:true,
-          autoComplete:"current-password",
-          value:p,
-          onChange:x=>setP(x.target.value)
+        const { data, error } =
+          await db.auth.signInWithPassword({
+            email: email.trim(),
+            password
+          });
+
+        setLoading(false);
+
+        if (error) {
+          setError(
+            error.message ||
+            "Unable to sign in."
+          );
+          return;
         }
-      ),
 
-      h("br"),
+        if (!data?.user) {
+          setError("Authentication succeeded but no user was returned.");
+          return;
+        }
 
-      h(
-        "button",
-        {
-          className:"btn",
-          type:"submit",
-          disabled:loading,
-          style:{
-            width:"100%",
-            opacity:loading ? .7 : 1
-          }
-        },
-        loading
-          ? "Signing in..."
-          : "Sign in"
-      )
-    ),
-
-    err &&
-      h(
-        "div",
-        {className:"errorBox"},
-        h(
-          "strong",
-          null,
-          "Sign in failed"
-        ),
-        h(
-          "div",
-          {style:{marginTop:5}},
-          err
-        )
-      )
-  );
-}
-
-
-/* =========================================================
-   MAIN APPLICATION
-   ========================================================= */
-
-function App(){
-
-  const [sess,setSess] = useState(null);
-  const [profile,setProfile] = useState(null);
-  const [loading,setLoading] = useState(true);
-  const [profileLoading,setProfileLoading] = useState(false);
-
-  const [tab,setTab] =
-    useState("dashboard");
-
-  const [patients,setPatients] =
-    useState([]);
-
-  const [sel,setSel] =
-    useState(null);
-
-  const [msg,setMsg] =
-    useState("");
-
-  const [error,setError] =
-    useState("");
-
-
-  /* -------------------------------------------------------
-     AUTH SESSION
-     ------------------------------------------------------- */
-
-  useEffect(()=>{
-
-    let mounted = true;
-
-    async function start(){
-
-      const {
-        data,
-        error
-      } = await db.auth.getSession();
-
-      if(!mounted)
-        return;
-
-      if(error){
-        setError(error.message);
+        onLogin(data.user);
       }
 
-      setSess(data?.session || null);
-      setLoading(false);
-    }
-
-    start();
-
-    const {
-      data
-    } =
-      db.auth.onAuthStateChange(
-        (_event,session)=>{
-
-          if(mounted){
-            setSess(session);
-          }
-        }
-      );
-
-    return ()=>{
-
-      mounted=false;
-
-      data.subscription.unsubscribe();
-    };
-
-  },[]);
-
-
-  /* -------------------------------------------------------
-     LOAD PROFILE
-     ------------------------------------------------------- */
-
-  useEffect(()=>{
-
-    if(sess){
-
-      loadProfileAndData();
-
-    }else{
-
-      setProfile(null);
-      setPatients([]);
-    }
-
-  },[sess]);
-
-
-  async function loadProfileAndData(){
-
-    setProfileLoading(true);
-    setMsg("");
-    setError("");
-
-    const {
-      data:profileData,
-      error:profileError
-    } =
-      await db
-        .from("profiles")
-        .select("*")
-        .eq("id",sess.user.id)
-        .maybeSingle();
-
-
-    if(profileError){
-
-      setError(profileError.message);
-      setProfile(null);
-      setProfileLoading(false);
-
-      return;
-    }
-
-
-    setProfile(profileData);
-
-
-    if(!profileData){
-
-      setProfileLoading(false);
-      return;
-    }
-
-
-    await loadPatients();
-
-    setProfileLoading(false);
-  }
-
-
-  /* -------------------------------------------------------
-     LOAD PATIENTS
-     ------------------------------------------------------- */
-
-  async function loadPatients(){
-
-    const r =
-      await db
-        .from("patients")
-        .select(`
-          *,
-          admissions(
-            id,
-            status,
-            ward_id,
-            bed_id,
-            admission_datetime,
-            working_diagnosis
-          )
-        `)
-        .order(
-          "updated_at",
-          {ascending:false}
-        );
-
-
-    if(r.error){
-
-      setError(r.error.message);
-      return;
-    }
-
-
-    setPatients(r.data || []);
-  }
-
-
-  /* -------------------------------------------------------
-     LOGOUT
-     ------------------------------------------------------- */
-
-  async function logout(){
-
-    await db.auth.signOut();
-
-    setSess(null);
-    setProfile(null);
-    setPatients([]);
-    setSel(null);
-    setTab("dashboard");
-  }
-
-
-  /* -------------------------------------------------------
-     LOADING
-     ------------------------------------------------------- */
-
-  if(loading){
-
-    return h(
-      "div",
-      {className:"loading"},
-      "Loading PRISM..."
-    );
-  }
-
-
-  /* -------------------------------------------------------
-     LOGIN
-     ------------------------------------------------------- */
-
-  if(!sess){
-
-    return h(Login);
-  }
-
-
-  /* -------------------------------------------------------
-     PROFILE LOADING
-     ------------------------------------------------------- */
-
-  if(profileLoading){
-
-    return h(
-      "div",
-      {className:"loading"},
-      "Loading user profile..."
-    );
-  }
-
-
-  /* -------------------------------------------------------
-     NO PROFILE
-     ------------------------------------------------------- */
-
-  if(!profile){
-
-    return h(
-
-      "main",
-
-      h(
+      return h(
         "div",
-        {className:"card"},
-
-        h(
-          "h2",
-          null,
-          "Account authenticated"
-        ),
-
-        h(
-          "p",
-          {className:"muted"},
-          "This authentication account does not yet have an active PRISM profile."
-        ),
-
-        h(
-          "p",
-          null,
-          "Ask a PRISM administrator to create or activate the profile for this account."
-        ),
-
-        error &&
-          h(
-            "div",
-            {className:"errorBox"},
-            error
-          ),
-
-        h(
-          "button",
-          {
-            className:"btn secondary",
-            onClick:logout
-          },
-          "Sign out"
-        )
-      )
-    );
-  }
-
-
-  /* -------------------------------------------------------
-     ACTIVE PATIENTS
-     ------------------------------------------------------- */
-
-  const active =
-    patients.filter(
-      p =>
-        (p.admissions || [])
-          .some(
-            a=>a.status==="active"
-          )
-    );
-
-
-  /* -------------------------------------------------------
-     OPEN PATIENT
-     ------------------------------------------------------- */
-
-  const open = p =>{
-
-    setSel(p);
-    setTab("patient");
-  };
-
-
-  /* -------------------------------------------------------
-     CONTENT
-     ------------------------------------------------------- */
-
-  let content;
-
-
-  /* =======================================================
-     DASHBOARD
-     ======================================================= */
-
-  if(tab==="dashboard"){
-
-    content =
-      h(
-
-        "div",
+        { className: "login-page" },
 
         h(
           "div",
-          {className:"row between"},
+          { className: "login-card" },
 
           h(
             "div",
+            { className: "brand" },
 
             h(
-              "h2",
-              null,
-              "Dashboard"
+              "div",
+              { className: "brand-mark" },
+              "P"
             ),
 
             h(
-              "p",
-              {className:"muted"},
-              "Current inpatient overview"
-            )
-          ),
-
-          h(
-            "button",
-            {
-              className:"btn",
-              onClick:loadPatients
-            },
-            "Refresh"
-          )
-        ),
-
-
-        h(
-          "div",
-          {className:"grid"},
-
-          h(
-            "div",
-            {className:"card"},
-
-            h(
-              "h3",
+              "div",
               null,
-              "Active admissions"
-            ),
 
-            h(
-              "h2",
-              null,
-              active.length
-            )
-          ),
-
-
-          h(
-            "div",
-            {className:"card"},
-
-            h(
-              "h3",
-              null,
-              "Authorized patients"
-            ),
-
-            h(
-              "h2",
-              null,
-              patients.length
-            )
-          )
-        ),
-
-
-        h(
-          "div",
-          {className:"card"},
-
-          h(
-            "h3",
-            null,
-            "Patients"
-          ),
-
-          active.length
-
-          ?
-
-          active.map(
-            p =>
               h(
-                Card,
-                {
-                  key:p.id,
-                  p,
-                  onClick:()=>open(p)
-                }
-              )
-          )
+                "div",
+                { className: "brand-title" },
+                "PRISM"
+              ),
 
-          :
+              h(
+                "div",
+                { className: "brand-subtitle" },
+                "Problem-oriented Inpatient Review & Structured Monitoring"
+              )
+            )
+          ),
 
           h(
-            "p",
-            {className:"muted"},
-            "No active admissions."
-          )
-        )
-      );
-  }
+            "h2",
+            { className: "login-title" },
+            "Sign in"
+          ),
 
+          error
+            ? h(
+                "div",
+                { className: "error" },
+                error
+              )
+            : null,
 
-  /* =======================================================
-     PATIENTS
-     ======================================================= */
+          h(
+            "form",
+            { onSubmit: submit },
 
-  else if(tab==="patients"){
+            h(
+              "div",
+              { className: "field" },
 
-    content =
-      h(
-        Patients,
-        {
-          patients,
-          onClick:open,
-          onRefresh:loadPatients
-        }
-      );
-  }
+              h(
+                "label",
+                null,
+                "Email"
+              ),
 
+              h("input", {
+                type: "email",
+                value: email,
+                autoComplete: "username",
+                onChange: e => setEmail(e.target.value),
+                placeholder: "name@example.com"
+              })
+            ),
 
-  /* =======================================================
-     PATIENT
-     ======================================================= */
+            h(
+              "div",
+              { className: "field" },
 
-  else if(
-    tab==="patient" &&
-    sel
-  ){
+              h(
+                "label",
+                null,
+                "Password"
+              ),
 
-    content =
-      h(
-        Patient,
-        {
-          p:sel,
-          profile,
-          onBack:()=>{
-            setTab("patients");
-            loadPatients();
-          }
-        }
-      );
-  }
-
-
-  /* =======================================================
-     ADMIN
-     ======================================================= */
-
-  else if(
-    tab==="admin" &&
-    profile.role==="admin"
-  ){
-
-    content =
-      h(Admin);
-  }
-
-
-  /* =======================================================
-     SPECIALIST QUEUE
-     ======================================================= */
-
-  else{
-
-    content =
-      h(
-        "div",
-        {className:"card"},
-
-        h(
-          "h2",
-          null,
-          "Specialist queue"
-        ),
-
-        h(
-          "p",
-          {className:"muted"},
-          "Specialist requests and reviews will appear here."
-        )
-      );
-  }
-
-
-  /* =======================================================
-     APPLICATION SHELL
-     ======================================================= */
-
-  return h(
-
-    "div",
-
-    h(
-      "header",
-
-      h(
-        "div",
-
-        h(
-          "div",
-          {className:"brand"},
-          "PRISM"
-        ),
-
-        h(
-          "div",
-          {className:"sub"},
-          "Clinical documentation • " +
-          profile.role
-        )
-      ),
-
-      h(
-        "button",
-        {
-          className:"btn secondary",
-          onClick:logout
-        },
-        "Sign out"
-      )
-    ),
-
-
-    h(
-      "main",
-
-      h(
-        "nav",
-
-        ...[
-          "dashboard",
-          "patients",
-          "queue",
-
-          ...(profile.role==="admin"
-            ? ["admin"]
-            : [])
-
-        ].map(
-
-          x =>
+              h("input", {
+                type: "password",
+                value: password,
+                autoComplete: "current-password",
+                onChange: e => setPassword(e.target.value),
+                placeholder: "Password"
+              })
+            ),
 
             h(
               "button",
               {
-                key:x,
-
-                className:
-                  "navbtn " +
-                  (
-                    tab===x
-                    ? "active"
-                    : ""
-                  ),
-
-                onClick:()=>{
-                  setTab(x);
-                }
+                className: "btn btn-primary",
+                type: "submit",
+                disabled: loading,
+                style: { width: "100%" }
               },
-
-              x==="queue"
-                ? "Specialist queue"
-                : x[0].toUpperCase()+
-                  x.slice(1)
+              loading ? "Signing in..." : "Sign in"
             )
-        )
-      ),
-
-
-      error &&
-
-        h(
-          "div",
-          {className:"errorBox"},
-          error
-        ),
-
-
-      msg &&
-
-        h(
-          "div",
-          {className:"notice"},
-          msg
-        ),
-
-
-      content
-    )
-  );
-}
-
-
-/* =========================================================
-   PATIENT CARD
-   ========================================================= */
-
-function Card({
-  p,
-  onClick
-}){
-
-  const a =
-    (p.admissions || [])
-      .find(
-        x=>x.status==="active"
-      );
-
-
-  return h(
-
-    "div",
-
-    {
-      className:"item click",
-      onClick
-    },
-
-    h(
-      "div",
-      {className:"row between"},
-
-      h(
-        "strong",
-        null,
-        p.patient_code
-      ),
-
-      h(
-        "span",
-        {className:"badge"},
-        p.demo
-          ? "DEMO"
-          : "OPERATIONAL"
-      )
-    ),
-
-    h(
-      "div",
-      null,
-
-      (p.full_name ||
-       "Unnamed patient") +
-
-      " • " +
-
-      p.age +
-
-      " / " +
-
-      p.sex
-    ),
-
-    a &&
-
-      h(
-        "div",
-        {className:"muted small"},
-        a.working_diagnosis ||
-        "No working diagnosis"
-      )
-  );
-}
-
-
-/* =========================================================
-   PATIENT LIST
-   ========================================================= */
-
-function Patients({
-  patients,
-  onClick,
-  onRefresh
-}){
-
-  const [q,setQ] =
-    useState("");
-
-
-  const list =
-    patients.filter(
-
-      p =>
-        JSON.stringify(p)
-          .toLowerCase()
-          .includes(
-            q.toLowerCase()
           )
-    );
+        )
+      );
+    }
 
+    function App() {
+      const [session, setSession] = useState(null);
+      const [profile, setProfile] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState("");
 
-  return h(
+      async function loadProfile(user) {
+        setError("");
 
-    "div",
+        const { data, error } = await db
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .maybeSingle();
 
-    h(
-      "div",
-      {className:"row between"},
-
-      h(
-        "h2",
-        null,
-        "Patients"
-      ),
-
-      h(
-        "button",
-        {
-          className:"btn secondary",
-          onClick:onRefresh
-        },
-        "Refresh"
-      )
-    ),
-
-
-    h(
-      "input",
-      {
-        placeholder:
-          "Search patient code, name, diagnosis…",
-
-        value:q,
-
-        onChange:e=>
-          setQ(e.target.value)
-      }
-    ),
-
-
-    h(
-      "div",
-      {
-        className:"grid",
-        style:{
-          marginTop:12
+        if (error) {
+          setError(
+            "Authentication succeeded, but PRISM could not load your profile: " +
+            error.message
+          );
+          setProfile(null);
+          return;
         }
-      },
 
-      list.map(
+        if (!data) {
+          setError(
+            "Your Supabase account exists, but no PRISM profile exists for this user. An administrator must create the PRISM profile."
+          );
+          setProfile(null);
+          return;
+        }
 
-        p =>
+        if (data.active === false) {
+          setError(
+            "This PRISM account is inactive."
+          );
+          setProfile(null);
+          return;
+        }
+
+        setProfile(data);
+      }
+
+      useEffect(() => {
+        let mounted = true;
+
+        async function initialize() {
+          const {
+            data: { session }
+          } = await db.auth.getSession();
+
+          if (!mounted) return;
+
+          setSession(session);
+
+          if (session?.user) {
+            await loadProfile(session.user);
+          }
+
+          setLoading(false);
+        }
+
+        initialize();
+
+        const {
+          data: { subscription }
+        } = db.auth.onAuthStateChange(
+          async (_event, newSession) => {
+            if (!mounted) return;
+
+            setSession(newSession);
+
+            if (newSession?.user) {
+              await loadProfile(newSession.user);
+            } else {
+              setProfile(null);
+            }
+          }
+        );
+
+        return () => {
+          mounted = false;
+          subscription.unsubscribe();
+        };
+      }, []);
+
+      if (loading) {
+        return h(
+          "div",
+          { className: "loading" },
+          "Loading PRISM..."
+        );
+      }
+
+      if (!session) {
+        return h(
+          Login,
+          {
+            onLogin: user => {
+              setSession({
+                user
+              });
+            }
+          }
+        );
+      }
+
+      if (!profile) {
+        return h(
+          "div",
+          { className: "login-page" },
 
           h(
-            Card,
-            {
-              key:p.id,
-              p,
-              onClick:
-                ()=>onClick(p)
-            }
-          )
-      )
-    )
-  );
-}
-
-
-/* =========================================================
-   PATIENT PAGE
-   ========================================================= */
-
-function Patient({
-  p,
-  profile,
-  onBack
-}){
-
-  const a =
-    (p.admissions || [])
-      .find(
-        x=>x.status==="active"
-      )
-      ||
-    (p.admissions || [])[0];
-
-
-  const [ad,setAd] =
-    useState(null);
-
-  const [updates,setUpdates] =
-    useState([]);
-
-  const [reviews,setReviews] =
-    useState([]);
-
-  const [form,setForm] =
-    useState(blank);
-
-  const [show,setShow] =
-    useState(false);
-
-  const [notice,setNotice] =
-    useState("");
-
-
-  useEffect(()=>{
-
-    if(a)
-      load();
-
-  },[a?.id]);
-
-
-  async function load(){
-
-    if(!a)
-      return;
-
-
-    const [
-      x,
-      y,
-      z
-    ] = await Promise.all([
-
-      db
-        .from("admissions")
-        .select("*")
-        .eq("id",a.id)
-        .single(),
-
-      db
-        .from("daily_updates")
-        .select(
-          "*,profiles(display_name)"
-        )
-        .eq(
-          "admission_id",
-          a.id
-        )
-        .order(
-          "occurred_at",
-          {ascending:false}
-        ),
-
-      db
-        .from("specialist_reviews")
-        .select(
-          "*,profiles(display_name)"
-        )
-        .eq(
-          "admission_id",
-          a.id
-        )
-        .order(
-          "reviewed_at",
-          {ascending:false}
-        )
-    ]);
-
-
-    setAd(x.data);
-    setUpdates(y.data || []);
-    setReviews(z.data || []);
-  }
-
-
-  async function save(ev){
-
-    ev.preventDefault();
-
-    setNotice("");
-
-
-    const {
-      error
-    } = await db
-      .from("daily_updates")
-      .insert({
-
-        ...form,
-
-        admission_id:a.id,
-
-        author_id:profile.id,
-
-        occurred_at:
-          new Date().toISOString()
-
-      });
-
-
-    if(error){
-
-      setNotice(
-        error.message
-      );
-
-    }else{
-
-      setNotice(
-        "Follow-up saved successfully."
-      );
-
-      setForm(blank);
-
-      setShow(false);
-
-      load();
-    }
-  }
-
-
-  if(!a){
-
-    return h(
-      "div",
-      {className:"card"},
-
-      h(
-        "h2",
-        null,
-        "No admission"
-      ),
-
-      h(
-        "button",
-        {
-          className:"btn",
-          onClick:onBack
-        },
-        "Back"
-      )
-    );
-  }
-
-
-  return h(
-
-    "div",
-
-    h(
-      "button",
-      {
-        className:"btn secondary",
-        onClick:onBack
-      },
-      "← Patients"
-    ),
-
-
-    h(
-      "div",
-      {
-        className:"card",
-        style:{marginTop:10}
-      },
-
-      h(
-        "div",
-        {className:"row between"},
-
-        h(
-          "h2",
-          null,
-
-          p.patient_code +
-          " — " +
-          (
-            p.full_name ||
-            "Patient"
-          )
-        ),
-
-        h(
-          "span",
-          {className:"badge"},
-
-          p.demo
-            ? "DEMO"
-            : "OPERATIONAL"
-        )
-      ),
-
-
-      h(
-        "p",
-        {className:"muted"},
-
-        p.age +
-        " / " +
-        p.sex +
-        " • " +
-
-        new Date(
-          a.admission_datetime
-        ).toLocaleString()
-      ),
-
-
-      h(
-        "h3",
-        null,
-        "Why admitted"
-      ),
-
-      h(
-        "p",
-        null,
-        ad?.reason_for_admission ||
-        "—"
-      ),
-
-
-      h(
-        "h3",
-        null,
-        "Working diagnosis"
-      ),
-
-      h(
-        "p",
-        null,
-        ad?.working_diagnosis ||
-        "—"
-      ),
-
-
-      h(
-        "h3",
-        null,
-        "Baseline"
-      ),
-
-      h(
-        "p",
-        null,
-        ad?.baseline_clinical_status ||
-        "—"
-      ),
-
-
-      h(
-        "h3",
-        null,
-        "Initial plan"
-      ),
-
-      h(
-        "p",
-        null,
-        ad?.initial_plan ||
-        "—"
-      )
-    ),
-
-
-    h(
-      "div",
-      {className:"card"},
-
-      h(
-        "div",
-        {className:"row between"},
-
-        h(
-          "h3",
-          null,
-          "Daily follow-up"
-        ),
-
-        h(
-          "button",
-          {
-            className:"btn",
-            onClick:()=>{
-              setShow(!show);
-              setNotice("");
-            }
-          },
-          "+ Add"
-        )
-      ),
-
-
-      notice &&
-
-        h(
-          "p",
-          {
-            className:
-              notice.includes(
-                "successfully"
-              )
-              ? "ok"
-              : "danger"
-          },
-          notice
-        ),
-
-
-      show &&
-
-        h(
-          "form",
-          {onSubmit:save},
-
-          Object.keys(blank).map(
-
-            k =>
+            "div",
+            { className: "login-card" },
+
+            h(
+              "div",
+              { className: "brand" },
 
               h(
                 "div",
-                {key:k},
+                { className: "brand-mark" },
+                "P"
+              ),
+
+              h(
+                "div",
+                null,
 
                 h(
-                  "label",
-                  null,
-                  k.replaceAll(
-                    "_",
-                    " "
-                  )
+                  "div",
+                  { className: "brand-title" },
+                  "PRISM"
                 ),
 
-                k==="clinical_stability"
-
-                ?
-
                 h(
-                  "select",
-                  {
-                    value:form[k],
-
-                    onChange:e=>
-                      setForm({
-                        ...form,
-                        [k]:
-                          e.target.value
-                      })
-                  },
-
-                  [
-                    "stable",
-                    "improving",
-                    "deteriorating",
-                    "unstable"
-                  ].map(
-
-                    v=>
-
-                      h(
-                        "option",
-                        {
-                          key:v,
-                          value:v
-                        },
-                        v
-                      )
-                  )
-                )
-
-                :
-
-                h(
-                  "textarea",
-                  {
-                    value:form[k],
-
-                    onChange:e=>
-                      setForm({
-                        ...form,
-                        [k]:
-                          e.target.value
-                      })
-                  }
+                  "div",
+                  { className: "brand-subtitle" },
+                  "Clinical Documentation"
                 )
               )
-          ),
+            ),
 
+            error
+              ? h(
+                  "div",
+                  { className: "error" },
+                  error
+                )
+              : null,
+
+            h(
+              "button",
+              {
+                className: "btn btn-secondary",
+                onClick: async () => {
+                  await db.auth.signOut();
+                }
+              },
+              "Sign out"
+            )
+          )
+        );
+      }
+
+      return h(
+        MainApp,
+        {
+          profile
+        }
+      );
+    }
+
+    function MainApp({ profile }) {
+      const [page, setPage] = useState("dashboard");
+      const [patients, setPatients] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState("");
+      const [selectedPatient, setSelectedPatient] = useState(null);
+
+      async function loadPatients() {
+        setLoading(true);
+        setError("");
+
+        const { data, error } = await db
+          .from("patients")
+          .select(`
+            id,
+            patient_code,
+            full_name,
+            age,
+            sex,
+            demo,
+            created_at,
+            admissions (
+              id,
+              ward_id,
+              bed_id,
+              admission_datetime,
+              discharge_datetime,
+              status,
+              responsible_mo_id,
+              specialist_id,
+              reason_for_admission,
+              brief_summary,
+              working_diagnosis,
+              relevant_background,
+              baseline_clinical_status,
+              baseline_investigations,
+              initial_plan,
+              goals_targets,
+              created_at
+            )
+          `)
+          .order("created_at", {
+            ascending: false
+          });
+
+        if (error) {
+          setError(error.message);
+          setPatients([]);
+        } else {
+          setPatients(data || []);
+        }
+
+        setLoading(false);
+      }
+
+      useEffect(() => {
+        loadPatients();
+      }, []);
+
+      async function logout() {
+        await db.auth.signOut();
+      }
+
+      const activeAdmissions = useMemo(() => {
+        return patients.flatMap(patient =>
+          (patient.admissions || [])
+            .filter(a => a.status === "active")
+            .map(admission => ({
+              patient,
+              admission
+            }))
+        );
+      }, [patients]);
+
+      function openPatient(patient) {
+        setSelectedPatient(patient);
+        setPage("patient");
+      }
+
+      return h(
+        "div",
+        { className: "app" },
+
+        h(
+          "header",
+          { className: "topbar" },
+
+          h(
+            "div",
+            { className: "topbar-left" },
+
+            h(
+              "div",
+              { className: "brand-mark", style: { width: 36, height: 36, fontSize: 16 } },
+              "P"
+            ),
+
+            h(
+              "div",
+              { className: "topbar-title" },
+              "PRISM"
+            ),
+
+            h(
+              "span",
+              { className: "role-badge" },
+              roleLabel(profile.role)
+            )
+          ),
 
           h(
             "button",
             {
-              className:"btn",
-              type:"submit"
+              className: "btn btn-secondary",
+              onClick: logout
             },
-            "Save follow-up"
+            "Sign out"
           )
         ),
 
-
-      h(
-        "div",
-        {
-          className:"timeline",
-          style:{
-            marginTop:14
-          }
-        },
-
-        updates.map(
-
-          u =>
-
-            h(
-              "div",
-              {
-                className:"event",
-                key:u.id
-              },
-
-              h(
-                "strong",
-                null,
-
-                new Date(
-                  u.occurred_at
-                ).toLocaleString()
-              ),
-
-              h(
-                "span",
-                {className:"badge"},
-                u.clinical_stability
-              ),
-
-              u.clinical_changes &&
-
-                h(
-                  "p",
-                  null,
-                  u.clinical_changes
-                ),
-
-              u.problems_assessment &&
-
-                h(
-                  "p",
-                  null,
-
-                  h(
-                    "strong",
-                    null,
-                    "Problems / Assessment: "
-                  ),
-
-                  u.problems_assessment
-                ),
-
-              u.response &&
-
-                h(
-                  "p",
-                  null,
-
-                  h(
-                    "strong",
-                    null,
-                    "Response: "
-                  ),
-
-                  u.response
-                ),
-
-              u.management_changes &&
-
-                h(
-                  "p",
-                  null,
-
-                  h(
-                    "strong",
-                    null,
-                    "Management changes: "
-                  ),
-
-                  u.management_changes
-                ),
-
-              u.remaining_inpatient_needs &&
-
-                h(
-                  "p",
-                  null,
-
-                  h(
-                    "strong",
-                    null,
-                    "Remaining inpatient needs: "
-                  ),
-
-                  u.remaining_inpatient_needs
-                ),
-
-              u.recommendation_next_steps &&
-
-                h(
-                  "p",
-                  {className:"muted"},
-
-                  h(
-                    "strong",
-                    null,
-                    "Next steps: "
-                  ),
-
-                  u.recommendation_next_steps
-                )
-            )
-        ),
-
-        !updates.length &&
+        h(
+          "div",
+          { className: "layout" },
 
           h(
-            "p",
-            {className:"muted"},
-            "No daily updates yet."
+            "aside",
+            { className: "sidebar" },
+
+            h(
+              "button",
+              {
+                className:
+                  "nav-btn " +
+                  (page === "dashboard" ? "active" : ""),
+                onClick: () => setPage("dashboard")
+              },
+              "Dashboard"
+            ),
+
+            h(
+              "button",
+              {
+                className:
+                  "nav-btn " +
+                  (page === "patients" ? "active" : ""),
+                onClick: () => setPage("patients")
+              },
+              "Patients"
+            ),
+
+            h(
+              "button",
+              {
+                className:
+                  "nav-btn " +
+                  (page === "specialists" ? "active" : ""),
+                onClick: () => setPage("specialists")
+              },
+              "Specialist Queue"
+            ),
+
+            profile.role === "admin"
+              ? h(
+                  "button",
+                  {
+                    className:
+                      "nav-btn " +
+                      (page === "admin" ? "active" : ""),
+                    onClick: () => setPage("admin")
+                  },
+                  "Administration"
+                )
+              : null
+          ),
+
+          h(
+            "main",
+            { className: "content" },
+
+            error
+              ? h(
+                  "div",
+                  { className: "error" },
+                  error
+                )
+              : null,
+
+            page === "dashboard"
+              ? h(
+                  Dashboard,
+                  {
+                    profile,
+                    activeAdmissions,
+                    loading,
+                    onRefresh: loadPatients,
+                    onOpenPatient: openPatient
+                  }
+                )
+              : null,
+
+            page === "patients"
+              ? h(
+                  PatientsPage,
+                  {
+                    patients,
+                    loading,
+                    onOpenPatient: openPatient,
+                    onRefresh: loadPatients
+                  }
+                )
+              : null,
+
+            page === "patient" && selectedPatient
+              ? h(
+                  PatientPage,
+                  {
+                    patient: selectedPatient,
+                    profile,
+                    onBack: () => setPage("patients")
+                  }
+                )
+              : null,
+
+            page === "specialists"
+              ? h(
+                  SpecialistQueue,
+                  {
+                    profile
+                  }
+                )
+              : null,
+
+            page === "admin" && profile.role === "admin"
+              ? h(
+                  AdminPage,
+                  {
+                    profile
+                  }
+                )
+              : null
           )
-      )
-    ),
+        )
+      );
+    }
 
+    function Dashboard({
+      profile,
+      activeAdmissions,
+      loading,
+      onRefresh,
+      onOpenPatient
+    }) {
+      const stable = activeAdmissions.filter(
+        x =>
+          x.admission.latest_stability === "stable"
+      ).length;
 
-    h(
-      "div",
-      {className:"card"},
-
-      h(
-        "h3",
+      return h(
+        React.Fragment,
         null,
-        "Specialist reviews"
-      ),
 
-      reviews.map(
+        h(
+          "div",
+          { className: "page-title" },
+          "Dashboard"
+        ),
 
-        r =>
+        h(
+          "div",
+          { className: "page-subtitle" },
+          "Current inpatient overview"
+        ),
+
+        h(
+          "div",
+          { className: "grid grid-4" },
 
           h(
             "div",
-            {
-              className:"item",
-              key:r.id
-            },
+            { className: "card" },
 
             h(
-              "strong",
-              null,
-
-              new Date(
-                r.reviewed_at
-              ).toLocaleString()
+              "div",
+              { className: "stat-label" },
+              "Active Admissions"
             ),
 
             h(
-              "p",
-              null,
-              r.clinical_assessment
-            ),
-
-            h(
-              "p",
-              {className:"muted"},
-              r.recommendations
+              "div",
+              { className: "stat-number" },
+              activeAdmissions.length
             )
-          )
-      ),
-
-      !reviews.length &&
-
-        h(
-          "p",
-          {className:"muted"},
-          "No specialist reviews recorded."
-        )
-    )
-  );
-}
-
-
-/* =========================================================
-   ADMIN PAGE
-   ========================================================= */
-
-function Admin(){
-
-  const [profiles,setProfiles] =
-    useState([]);
-
-  const [departments,setDepartments] =
-    useState([]);
-
-  const [wards,setWards] =
-    useState([]);
-
-  const [beds,setBeds] =
-    useState([]);
-
-  const [loading,setLoading] =
-    useState(true);
-
-  const [error,setError] =
-    useState("");
-
-
-  async function load(){
-
-    setLoading(true);
-    setError("");
-
-
-    const [
-      p,
-      d,
-      w,
-      b
-    ] = await Promise.all([
-
-      db
-        .from("profiles")
-        .select("*")
-        .order("created_at"),
-
-      db
-        .from("departments")
-        .select("*")
-        .order("name"),
-
-      db
-        .from("wards")
-        .select("*")
-        .order("name"),
-
-      db
-        .from("beds")
-        .select("*")
-        .order("name")
-    ]);
-
-
-    if(p.error)
-      setError(p.error.message);
-
-    else if(d.error)
-      setError(d.error.message);
-
-    else if(w.error)
-      setError(w.error.message);
-
-    else if(b.error)
-      setError(b.error.message);
-
-
-    setProfiles(
-      p.data || []
-    );
-
-    setDepartments(
-      d.data || []
-    );
-
-    setWards(
-      w.data || []
-    );
-
-    setBeds(
-      b.data || []
-    );
-
-    setLoading(false);
-  }
-
-
-  useEffect(()=>{
-    load();
-  },[]);
-
-
-  if(loading){
-
-    return h(
-      "div",
-      {className:"loading"},
-      "Loading administration..."
-    );
-  }
-
-
-  return h(
-
-    "div",
-
-    h(
-      "div",
-      {className:"row between"},
-
-      h(
-        "h2",
-        null,
-        "Administration"
-      ),
-
-      h(
-        "button",
-        {
-          className:"btn secondary",
-          onClick:load
-        },
-        "Refresh"
-      )
-    ),
-
-
-    error &&
-
-      h(
-        "div",
-        {className:"errorBox"},
-        error
-      ),
-
-
-    h(
-      "div",
-      {className:"card"},
-
-      h(
-        "h3",
-        null,
-        "PRISM Users"
-      ),
-
-      h(
-        "p",
-        {className:"muted small"},
-        "Authentication accounts are managed through Supabase Authentication. PRISM profiles define the application role."
-      ),
-
-
-      profiles.length
-
-      ?
-
-      h(
-        "table",
-
-        h(
-          "thead",
+          ),
 
           h(
-            "tr",
+            "div",
+            { className: "card" },
 
             h(
-              "th",
-              null,
-              "Name"
+              "div",
+              { className: "stat-label" },
+              "Medical Officers"
             ),
 
             h(
-              "th",
-              null,
-              "Email"
-            ),
+              "div",
+              { className: "stat-number" },
+              profile.role === "medical_officer" ? "1" : "—"
+            )
+          ),
+
+          h(
+            "div",
+            { className: "card" },
 
             h(
-              "th",
-              null,
+              "div",
+              { className: "stat-label" },
               "Role"
             ),
 
             h(
-              "th",
-              null,
-              "Active"
+              "div",
+              { className: "stat-number", style: { fontSize: 20 } },
+              roleLabel(profile.role)
+            )
+          ),
+
+          h(
+            "div",
+            { className: "card" },
+
+            h(
+              "div",
+              { className: "stat-label" },
+              "System"
+            ),
+
+            h(
+              "div",
+              {
+                className: "stat-number",
+                style: {
+                  fontSize: 20,
+                  color: "#0f766e"
+                }
+              },
+              "ONLINE"
             )
           )
         ),
 
+        h(
+          "div",
+          { className: "card" },
+
+          h(
+            "div",
+            { className: "row" },
+
+            h(
+              "div",
+              { className: "section-title" },
+              "Active Inpatients"
+            ),
+
+            h(
+              "button",
+              {
+                className: "btn btn-secondary",
+                onClick: onRefresh
+              },
+              "Refresh"
+            )
+          ),
+
+          loading
+            ? h(
+                "div",
+                { className: "loading" },
+                "Loading patients..."
+              )
+            : activeAdmissions.length === 0
+              ? h(
+                  "div",
+                  { className: "empty" },
+                  "No active admissions available."
+                )
+              : activeAdmissions.map(item =>
+                  h(
+                    "div",
+                    {
+                      key: item.admission.id,
+                      className: "card patient-card",
+                      onClick: () =>
+                        onOpenPatient(item.patient)
+                    },
+
+                    h(
+                      "div",
+                      { className: "row wrap" },
+
+                      h(
+                        "div",
+                        null,
+
+                        h(
+                          "div",
+                          { className: "patient-name" },
+                          item.patient.full_name ||
+                          "Unnamed patient"
+                        ),
+
+                        h(
+                          "div",
+                          { className: "muted small" },
+                          `${item.patient.patient_code || "No ID"} • ` +
+                          `${item.patient.age ?? "—"} years • ` +
+                          `${item.patient.sex || "—"}`
+                        )
+                      ),
+
+                      h(
+                        "span",
+                        {
+                          className:
+                            "badge " +
+                            stabilityClass(
+                              item.admission.latest_stability
+                            )
+                        },
+                        item.admission.latest_stability ||
+                        "No update"
+                      )
+                    ),
+
+                    h(
+                      "div",
+                      {
+                        className: "muted small",
+                        style: { marginTop: 10 }
+                      },
+                      item.admission.working_diagnosis ||
+                      "Working diagnosis not documented"
+                    )
+                  )
+                )
+        )
+      );
+    }
+
+    function PatientsPage({
+      patients,
+      loading,
+      onOpenPatient,
+      onRefresh
+    }) {
+      const [search, setSearch] = useState("");
+
+      const filtered = patients.filter(patient => {
+        const q = search.toLowerCase();
+
+        return (
+          !q ||
+          String(patient.full_name || "")
+            .toLowerCase()
+            .includes(q) ||
+          String(patient.patient_code || "")
+            .toLowerCase()
+            .includes(q)
+        );
+      });
+
+      return h(
+        React.Fragment,
+        null,
 
         h(
-          "tbody",
+          "div",
+          { className: "page-title" },
+          "Patients"
+        ),
 
-          profiles.map(
+        h(
+          "div",
+          { className: "page-subtitle" },
+          "Patient and admission records"
+        ),
 
-            x =>
+        h(
+          "div",
+          { className: "card" },
 
-              h(
-                "tr",
-                {key:x.id},
+          h(
+            "div",
+            { className: "row wrap" },
 
+            h(
+              "input",
+              {
+                style: { maxWidth: 450 },
+                placeholder: "Search patient or patient ID...",
+                value: search,
+                onChange: e => setSearch(e.target.value)
+              }
+            ),
+
+            h(
+              "button",
+              {
+                className: "btn btn-secondary",
+                onClick: onRefresh
+              },
+              "Refresh"
+            )
+          )
+        ),
+
+        loading
+          ? h(
+              "div",
+              { className: "loading" },
+              "Loading..."
+            )
+          : h(
+              "div",
+              { className: "grid grid-2" },
+
+              filtered.map(patient =>
                 h(
-                  "td",
-                  null,
-                  x.display_name ||
-                  "—"
-                ),
-
-                h(
-                  "td",
-                  null,
-                  x.email ||
-                  "—"
-                ),
-
-                h(
-                  "td",
-                  null,
+                  "div",
+                  {
+                    key: patient.id,
+                    className: "card patient-card",
+                    onClick: () => onOpenPatient(patient)
+                  },
 
                   h(
-                    "span",
-                    {className:"badge"},
-                    x.role
-                  )
-                ),
+                    "div",
+                    { className: "patient-name" },
+                    patient.full_name ||
+                    "Unnamed patient"
+                  ),
 
-                h(
-                  "td",
-                  null,
-                  x.active
-                    ? "Active"
-                    : "Inactive"
+                  h(
+                    "div",
+                    {
+                      className: "muted small",
+                      style: { marginTop: 4 }
+                    },
+                    patient.patient_code ||
+                    "No patient ID"
+                  ),
+
+                  h(
+                    "div",
+                    {
+                      style: { marginTop: 12 }
+                    },
+                    `${patient.age ?? "—"} years • ${patient.sex || "—"}`
+                  ),
+
+                  h(
+                    "div",
+                    {
+                      className: "muted small",
+                      style: { marginTop: 8 }
+                    },
+                    `${(patient.admissions || []).length} admission(s)`
+                  )
                 )
               )
+            )
+      );
+    }
+
+    function PatientPage({
+      patient,
+      profile,
+      onBack
+    }) {
+      const admission =
+        (patient.admissions || []).find(
+          a => a.status === "active"
+        ) ||
+        (patient.admissions || [])[0];
+
+      const [updates, setUpdates] = useState([]);
+      const [problems, setProblems] = useState([]);
+      const [investigations, setInvestigations] = useState([]);
+      const [reviews, setReviews] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [showFollowup, setShowFollowup] = useState(false);
+
+      async function loadClinicalData() {
+        if (!admission) {
+          setLoading(false);
+          return;
+        }
+
+        setLoading(true);
+
+        const [
+          updatesResult,
+          problemsResult,
+          investigationsResult,
+          reviewsResult
+        ] = await Promise.all([
+
+          db
+            .from("daily_updates")
+            .select("*")
+            .eq("admission_id", admission.id)
+            .order("occurred_at", {
+              ascending: false
+            }),
+
+          db
+            .from("problems")
+            .select("*")
+            .eq("admission_id", admission.id)
+            .order("problem_no", {
+              ascending: true
+            }),
+
+          db
+            .from("investigations")
+            .select("*")
+            .eq("admission_id", admission.id)
+            .order("performed_at", {
+              ascending: false
+            }),
+
+          db
+            .from("specialist_reviews")
+            .select("*")
+            .eq("admission_id", admission.id)
+            .order("reviewed_at", {
+              ascending: false
+            })
+        ]);
+
+        setUpdates(updatesResult.data || []);
+        setProblems(problemsResult.data || []);
+        setInvestigations(
+          investigationsResult.data || []
+        );
+        setReviews(reviewsResult.data || []);
+
+        setLoading(false);
+      }
+
+      useEffect(() => {
+        loadClinicalData();
+      }, [admission?.id]);
+
+      if (!admission) {
+        return h(
+          "div",
+          { className: "card" },
+
+          h(
+            "button",
+            {
+              className: "btn btn-secondary",
+              onClick: onBack
+            },
+            "← Back"
+          ),
+
+          h(
+            "div",
+            { className: "empty" },
+            "No admission record found."
           )
-        )
-      )
+        );
+      }
 
-      :
+      return h(
+        React.Fragment,
+        null,
 
-      h(
-        "p",
-        {className:"muted"},
-        "No PRISM profiles found."
-      )
-    ),
+        h(
+          "div",
+          { className: "row wrap" },
 
+          h(
+            "div",
+            null,
 
-    h(
-      "div",
-      {
-        className:"grid"
-      },
+            h(
+              "button",
+              {
+                className: "btn btn-secondary",
+                onClick: onBack
+              },
+              "← Patients"
+            )
+          ),
 
-      h(
-        ReferenceCard,
-        {
-          title:"Departments",
-          items:departments
-        }
-      ),
-
-      h(
-        ReferenceCard,
-        {
-          title:"Wards",
-          items:wards
-        }
-      ),
-
-      h(
-        ReferenceCard,
-        {
-          title:"Beds",
-          items:beds
-        }
-      )
-    )
-  );
-}
-
-
-/* =========================================================
-   REFERENCE DATA CARD
-   ========================================================= */
-
-function ReferenceCard({
-  title,
-  items
-}){
-
-  return h(
-
-    "div",
-    {className:"card"},
-
-    h(
-      "h3",
-      null,
-      title
-    ),
-
-    items.length
-
-    ?
-
-    items.map(
-
-      x =>
+          h(
+            "button",
+            {
+              className: "btn btn-primary",
+              onClick: () =>
+                setShowFollowup(true)
+            },
+            "Add Daily Follow-up"
+          )
+        ),
 
         h(
           "div",
           {
-            className:"item",
-            key:x.id
+            className: "page-title",
+            style: { marginTop: 18 }
           },
-          x.name
+          patient.full_name ||
+          "Unnamed patient"
+        ),
+
+        h(
+          "div",
+          { className: "page-subtitle" },
+          `${patient.patient_code || "No ID"} • ` +
+          `${patient.age ?? "—"} years • ` +
+          `${patient.sex || "—"}`
+        ),
+
+        h(
+          "div",
+          { className: "grid grid-2" },
+
+          h(
+            "div",
+            { className: "card" },
+
+            h(
+              "div",
+              { className: "section-title" },
+              "Admission"
+            ),
+
+            h(
+              "p",
+              null,
+              h("strong", null, "Date: "),
+              formatDate(admission.admission_datetime)
+            ),
+
+            h(
+              "p",
+              null,
+              h("strong", null, "Reason: "),
+              admission.reason_for_admission || "—"
+            ),
+
+            h(
+              "p",
+              null,
+              h("strong", null, "Working diagnosis: "),
+              admission.working_diagnosis || "—"
+            ),
+
+            h(
+              "p",
+              null,
+              h("strong", null, "Summary: "),
+              admission.brief_summary || "—"
+            )
+          ),
+
+          h(
+            "div",
+            { className: "card" },
+
+            h(
+              "div",
+              { className: "section-title" },
+              "Baseline Clinical Status"
+            ),
+
+            h(
+              "div",
+              {
+                style: {
+                  whiteSpace: "pre-wrap",
+                  lineHeight: 1.6
+                }
+              },
+              admission.baseline_clinical_status ||
+              "—"
+            )
+          )
+        ),
+
+        h(
+          "div",
+          { className: "card" },
+
+          h(
+            "div",
+            { className: "section-title" },
+            "Active Problems"
+          ),
+
+          problems.length === 0
+            ? h(
+                "div",
+                { className: "empty" },
+                "No problems documented."
+              )
+            : problems.map(problem =>
+                h(
+                  "div",
+                  {
+                    key: problem.id,
+                    style: {
+                      padding: "12px 0",
+                      borderBottom:
+                        "1px solid #e2e8f0"
+                    }
+                  },
+
+                  h(
+                    "div",
+                    { className: "row wrap" },
+
+                    h(
+                      "strong",
+                      null,
+                      `P${problem.problem_no || ""} — ` +
+                      `${problem.problem || "Problem"}`
+                    ),
+
+                    problem.current_status
+                      ? h(
+                          "span",
+                          { className: "badge" },
+                          problem.current_status
+                        )
+                      : null
+                  ),
+
+                  h(
+                    "div",
+                    {
+                      className: "small",
+                      style: { marginTop: 7 }
+                    },
+                    h(
+                      "strong",
+                      null,
+                      "Goal: "
+                    ),
+                    problem.goal_target || "—"
+                  ),
+
+                  h(
+                    "div",
+                    {
+                      className: "small",
+                      style: { marginTop: 4 }
+                    },
+                    h(
+                      "strong",
+                      null,
+                      "Management: "
+                    ),
+                    problem.initial_management || "—"
+                  ),
+
+                  h(
+                    "div",
+                    {
+                      className: "small",
+                      style: { marginTop: 4 }
+                    },
+                    h(
+                      "strong",
+                      null,
+                      "Monitoring: "
+                    ),
+                    problem.monitoring || "—"
+                  )
+                )
+              )
+        ),
+
+        h(
+          "div",
+          { className: "card" },
+
+          h(
+            "div",
+            { className: "section-title" },
+            "Important Investigations"
+          ),
+
+          investigations.length === 0
+            ? h(
+                "div",
+                { className: "empty" },
+                "No investigations documented."
+              )
+            : h(
+                "div",
+                { className: "table-wrap" },
+
+                h(
+                  "table",
+                  null,
+
+                  h(
+                    "thead",
+                    null,
+
+                    h(
+                      "tr",
+                      null,
+
+                      h("th", null, "Category"),
+                      h("th", null, "Test"),
+                      h("th", null, "Date"),
+                      h("th", null, "Result"),
+                      h("th", null, "Clinical significance")
+                    )
+                  ),
+
+                  h(
+                    "tbody",
+                    null,
+
+                    investigations.map(item =>
+                      h(
+                        "tr",
+                        { key: item.id },
+
+                        h("td", null, item.category),
+                        h("td", null, item.test_name),
+                        h(
+                          "td",
+                          null,
+                          formatDate(item.performed_at)
+                        ),
+                        h(
+                          "td",
+                          null,
+                          item.result || "—"
+                        ),
+                        h(
+                          "td",
+                          null,
+                          item.clinical_significance || "—"
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+        ),
+
+        h(
+          "div",
+          { className: "card" },
+
+          h(
+            "div",
+            { className: "section-title" },
+            "Clinical Timeline"
+          ),
+
+          loading
+            ? h(
+                "div",
+                { className: "loading" },
+                "Loading timeline..."
+              )
+            : updates.length === 0
+              ? h(
+                  "div",
+                  { className: "empty" },
+                  "No daily follow-up entries yet."
+                )
+              : h(
+                  "div",
+                  { className: "timeline" },
+
+                  updates.map(update =>
+                    h(
+                      "div",
+                      {
+                        key: update.id,
+                        className: "timeline-item"
+                      },
+
+                      h(
+                        "div",
+                        { className: "timeline-dot" }
+                      ),
+
+                      h(
+                        "div",
+                        {
+                          className: "timeline-title"
+                        },
+                        formatDate(update.occurred_at)
+                      ),
+
+                      h(
+                        "div",
+                        {
+                          style: {
+                            marginBottom: 8
+                          }
+                        },
+
+                        h(
+                          "span",
+                          {
+                            className:
+                              "badge " +
+                              stabilityClass(
+                                update.clinical_stability
+                              )
+                          },
+                          update.clinical_stability ||
+                          "No stability"
+                        )
+                      ),
+
+                      update.clinical_changes
+                        ? h(
+                            "div",
+                            {
+                              className:
+                                "timeline-body"
+                            },
+                            update.clinical_changes
+                          )
+                        : null,
+
+                      update.problems_assessment
+                        ? h(
+                            "div",
+                            {
+                              className:
+                                "timeline-body",
+                              style: {
+                                marginTop: 6
+                              }
+                            },
+                            update.problems_assessment
+                          )
+                        : null,
+
+                      update.management_changes
+                        ? h(
+                            "div",
+                            {
+                              className:
+                                "timeline-body",
+                              style: {
+                                marginTop: 6
+                              }
+                            },
+                            "Management: " +
+                            update.management_changes
+                          )
+                        : null,
+
+                      update.recommendation_next_steps
+                        ? h(
+                            "div",
+                            {
+                              className:
+                                "timeline-body",
+                              style: {
+                                marginTop: 6
+                              }
+                            },
+                            "Next: " +
+                            update.recommendation_next_steps
+                          )
+                        : null
+                    )
+                  )
+                )
+        ),
+
+        reviews.length > 0
+          ? h(
+              "div",
+              { className: "card" },
+
+              h(
+                "div",
+                { className: "section-title" },
+                "Specialist Reviews"
+              ),
+
+              reviews.map(review =>
+                h(
+                  "div",
+                  {
+                    key: review.id,
+                    style: {
+                      borderBottom:
+                        "1px solid #e2e8f0",
+                      padding: "12px 0"
+                    }
+                  },
+
+                  h(
+                    "strong",
+                    null,
+                    formatDate(review.reviewed_at)
+                  ),
+
+                  h(
+                    "div",
+                    {
+                      className: "small",
+                      style: {
+                        marginTop: 7,
+                        whiteSpace: "pre-wrap"
+                      }
+                    },
+                    review.clinical_assessment || "—"
+                  ),
+
+                  h(
+                    "div",
+                    {
+                      className: "small",
+                      style: {
+                        marginTop: 7,
+                        whiteSpace: "pre-wrap"
+                      }
+                    },
+                    review.recommendations || ""
+                  )
+                )
+              )
+            )
+          : null,
+
+        showFollowup
+          ? h(
+              FollowupModal,
+              {
+                admissionId: admission.id,
+                onClose: () =>
+                  setShowFollowup(false),
+                onSaved: async () => {
+                  setShowFollowup(false);
+                  await loadClinicalData();
+                }
+              }
+            )
+          : null
+      );
+    }
+
+    function FollowupModal({
+      admissionId,
+      onClose,
+      onSaved
+    }) {
+      const [form, setForm] = useState({
+        clinical_changes: "",
+        new_results: "",
+        problems_assessment: "",
+        clinical_stability: "stable",
+        response: "",
+        management_changes: "",
+        remaining_inpatient_needs: "",
+        why_still_admitted: "",
+        recommendation_next_steps: "",
+        escalation_red_flags: ""
+      });
+
+      const [saving, setSaving] = useState(false);
+      const [error, setError] = useState("");
+
+      function update(field, value) {
+        setForm(old => ({
+          ...old,
+          [field]: value
+        }));
+      }
+
+      async function save() {
+        setError("");
+
+        if (!form.clinical_stability) {
+          setError(
+            "Clinical stability is required."
+          );
+          return;
+        }
+
+        setSaving(true);
+
+        const {
+          data: {
+            user
+          }
+        } = await db.auth.getUser();
+
+        if (!user) {
+          setSaving(false);
+          setError("Authentication session expired.");
+          return;
+        }
+
+        const { error } = await db
+          .from("daily_updates")
+          .insert({
+            admission_id: admissionId,
+            author_id: user.id,
+            occurred_at: new Date().toISOString(),
+            clinical_changes: form.clinical_changes,
+            new_results: form.new_results,
+            problems_assessment: form.problems_assessment,
+            clinical_stability: form.clinical_stability,
+            response: form.response,
+            management_changes: form.management_changes,
+            remaining_inpatient_needs:
+              form.remaining_inpatient_needs,
+            why_still_admitted:
+              form.why_still_admitted,
+            recommendation_next_steps:
+              form.recommendation_next_steps,
+            escalation_red_flags:
+              form.escalation_red_flags
+          });
+
+        setSaving(false);
+
+        if (error) {
+          setError(error.message);
+          return;
+        }
+
+        await onSaved();
+      }
+
+      return h(
+        "div",
+        {
+          style: {
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 15,
+            zIndex: 100
+          }
+        },
+
+        h(
+          "div",
+          {
+            className: "card",
+            style: {
+              width: "100%",
+              maxWidth: 700,
+              maxHeight: "92vh",
+              overflowY: "auto",
+              margin: 0
+            }
+          },
+
+          h(
+            "div",
+            { className: "row" },
+
+            h(
+              "div",
+              { className: "section-title" },
+              "Daily Follow-up"
+            ),
+
+            h(
+              "button",
+              {
+                className: "btn btn-secondary",
+                onClick: onClose
+              },
+              "Close"
+            )
+          ),
+
+          error
+            ? h(
+                "div",
+                { className: "error" },
+                error
+              )
+            : null,
+
+          h(
+            FollowupField,
+            {
+              label: "Clinical Changes / Events",
+              value: form.clinical_changes,
+              onChange: v =>
+                update("clinical_changes", v)
+            }
+          ),
+
+          h(
+            FollowupField,
+            {
+              label: "New Important Results",
+              value: form.new_results,
+              onChange: v =>
+                update("new_results", v)
+            }
+          ),
+
+          h(
+            FollowupField,
+            {
+              label: "Problems / Assessment",
+              value: form.problems_assessment,
+              onChange: v =>
+                update("problems_assessment", v)
+            }
+          ),
+
+          h(
+            "div",
+            { className: "field" },
+
+            h(
+              "label",
+              null,
+              "Clinical Stability *"
+            ),
+
+            h(
+              "select",
+              {
+                value: form.clinical_stability,
+                onChange: e =>
+                  update(
+                    "clinical_stability",
+                    e.target.value
+                  )
+              },
+
+              h("option", { value: "stable" }, "Stable"),
+              h("option", { value: "improving" }, "Improving"),
+              h("option", { value: "deteriorating" }, "Deteriorating"),
+              h("option", { value: "unstable" }, "Unstable")
+            )
+          ),
+
+          h(
+            FollowupField,
+            {
+              label: "Response",
+              value: form.response,
+              onChange: v =>
+                update("response", v)
+            }
+          ),
+
+          h(
+            FollowupField,
+            {
+              label: "Management Changes",
+              value: form.management_changes,
+              onChange: v =>
+                update("management_changes", v)
+            }
+          ),
+
+          h(
+            FollowupField,
+            {
+              label: "Remaining Inpatient Needs",
+              value: form.remaining_inpatient_needs,
+              onChange: v =>
+                update(
+                  "remaining_inpatient_needs",
+                  v
+                )
+            }
+          ),
+
+          h(
+            FollowupField,
+            {
+              label: "Why Still Admitted",
+              value: form.why_still_admitted,
+              onChange: v =>
+                update(
+                  "why_still_admitted",
+                  v
+                ),
+              placeholder:
+                "Oxygen / IV treatment / monitoring / unstable status / pending investigation / specialist decision / procedure / other"
+            }
+          ),
+
+          h(
+            FollowupField,
+            {
+              label: "Recommendation / Next Steps",
+              value: form.recommendation_next_steps,
+              onChange: v =>
+                update(
+                  "recommendation_next_steps",
+                  v
+                )
+            }
+          ),
+
+          h(
+            FollowupField,
+            {
+              label: "Escalation / Red Flags",
+              value: form.escalation_red_flags,
+              onChange: v =>
+                update(
+                  "escalation_red_flags",
+                  v
+                )
+            }
+          ),
+
+          h(
+            "div",
+            { className: "form-actions" },
+
+            h(
+              "button",
+              {
+                className: "btn btn-secondary",
+                onClick: onClose,
+                disabled: saving
+              },
+              "Cancel"
+            ),
+
+            h(
+              "button",
+              {
+                className: "btn btn-primary",
+                onClick: save,
+                disabled: saving
+              },
+              saving
+                ? "Saving..."
+                : "Save Follow-up"
+            )
+          )
         )
-    )
+      );
+    }
 
-    :
+    function FollowupField({
+      label,
+      value,
+      onChange,
+      placeholder
+    }) {
+      return h(
+        "div",
+        { className: "field" },
 
-    h(
-      "p",
-      {className:"muted"},
-      "No entries yet."
-    )
-  );
-}
+        h(
+          "label",
+          null,
+          label
+        ),
 
+        h("textarea", {
+          value,
+          placeholder: placeholder || "",
+          onChange: e =>
+            onChange(e.target.value)
+        })
+      );
+    }
 
-/* =========================================================
-   START APPLICATION
-   ========================================================= */
+    function SpecialistQueue({ profile }) {
+      const [requests, setRequests] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState("");
 
-createRoot(
-  document.getElementById("root")
-).render(
-  h(App)
-);
+      async function load() {
+        setLoading(true);
 
-</script>
+        let query = db
+          .from("specialist_requests")
+          .select("*")
+          .order("requested_at", {
+            ascending: false
+          });
 
+        if (profile.role === "specialist") {
+          query = query.eq(
+            "specialist_id",
+            profile.id
+          );
+        }
+
+        const { data, error } =
+          await query;
+
+        if (error) {
+          setError(error.message);
+          setRequests([]);
+        } else {
+          setRequests(data || []);
+        }
+
+        setLoading(false);
+      }
+
+      useEffect(() => {
+        load();
+      }, []);
+
+      return h(
+        React.Fragment,
+        null,
+
+        h(
+          "div",
+          { className: "page-title" },
+          "Specialist Queue"
+        ),
+
+        h(
+          "div",
+          { className: "page-subtitle" },
+          "Specialist requests and review status"
+        ),
+
+        error
+          ? h(
+              "div",
+              { className: "error" },
+              error
+            )
+          : null,
+
+        h(
+          "div",
+          { className: "card" },
+
+          loading
+            ? h(
+                "div",
+                { className: "loading" },
+                "Loading..."
+              )
+            : requests.length === 0
+              ? h(
+                  "div",
+                  { className: "empty" },
+                  "No specialist requests available."
+                )
+              : h(
+                  "div",
+                  { className: "table-wrap" },
+
+                  h(
+                    "table",
+                    null,
+
+                    h(
+                      "thead",
+                      null,
+
+                      h(
+                        "tr",
+                        null,
+
+                        h("th", null, "Priority"),
+                        h("th", null, "Reason"),
+                        h("th", null, "Clinical Question"),
+                        h("th", null, "Status"),
+                        h("th", null, "Requested")
+                      )
+                    ),
+
+                    h(
+                      "tbody",
+                      null,
+
+                      requests.map(request =>
+                        h(
+                          "tr",
+                          { key: request.id },
+
+                          h(
+                            "td",
+                            null,
+                            request.priority
+                          ),
+
+                          h(
+                            "td",
+                            null,
+                            request.reason || "—"
+                          ),
+
+                          h(
+                            "td",
+                            null,
+                            request.clinical_question || "—"
+                          ),
+
+                          h(
+                            "td",
+                            null,
+                            request.status || "—"
+                          ),
+
+                          h(
+                            "td",
+                            null,
+                            formatDate(
+                              request.requested_at
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+        )
+      );
+    }
+
+    function AdminPage({ profile }) {
+      const [profiles, setProfiles] = useState([]);
+      const [departments, setDepartments] = useState([]);
+      const [wards, setWards] = useState([]);
+      const [beds, setBeds] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState("");
+
+      async function load() {
+        setLoading(true);
+        setError("");
+
+        const [
+          p,
+          d,
+          w,
+          b
+        ] = await Promise.all([
+
+          db
+            .from("profiles")
+            .select("*")
+            .order("created_at", {
+              ascending: false
+            }),
+
+          db
+            .from("departments")
+            .select("*")
+            .order("name"),
+
+          db
+            .from("wards")
+            .select("*")
+            .order("name"),
+
+          db
+            .from("beds")
+            .select("*")
+            .order("name")
+        ]);
+
+        const errors = [
+          p.error,
+          d.error,
+          w.error,
+          b.error
+        ].filter(Boolean);
+
+        if (errors.length) {
+          setError(
+            errors.map(e => e.message).join(" | ")
+          );
+        }
+
+        setProfiles(p.data || []);
+        setDepartments(d.data || []);
+        setWards(w.data || []);
+        setBeds(b.data || []);
+
+        setLoading(false);
+      }
+
+      useEffect(() => {
+        load();
+      }, []);
+
+      return h(
+        React.Fragment,
+        null,
+
+        h(
+          "div",
+          { className: "page-title" },
+          "Administration"
+        ),
+
+        h(
+          "div",
+          { className: "page-subtitle" },
+          "PRISM configuration and user overview"
+        ),
+
+        error
+          ? h(
+              "div",
+              { className: "error" },
+              error
+            )
+          : null,
+
+        h(
+          "div",
+          { className: "grid grid-4" },
+
+          h(
+            "div",
+            { className: "card" },
+            h(
+              "div",
+              { className: "stat-label" },
+              "Users"
+            ),
+            h(
+              "div",
+              { className: "stat-number" },
+              profiles.length
+            )
+          ),
+
+          h(
+            "div",
+            { className: "card" },
+            h(
+              "div",
+              { className: "stat-label" },
+              "Departments"
+            ),
+            h(
+              "div",
+              { className: "stat-number" },
+              departments.length
+            )
+          ),
+
+          h(
+            "div",
+            { className: "card" },
+            h(
+              "div",
+              { className: "stat-label" },
+              "Wards"
+            ),
+            h(
+              "div",
+              { className: "stat-number" },
+              wards.length
+            )
+          ),
+
+          h(
+            "div",
+            { className: "card" },
+            h(
+              "div",
+              { className: "stat-label" },
+              "Beds"
+            ),
+            h(
+              "div",
+              { className: "stat-number" },
+              beds.length
+            )
+          )
+        ),
+
+        h(
+          "div",
+          { className: "card" },
+
+          h(
+            "div",
+            { className: "row" },
+
+            h(
+              "div",
+              { className: "section-title" },
+              "PRISM Users"
+            ),
+
+            h(
+              "button",
+              {
+                className: "btn btn-secondary",
+                onClick: load
+              },
+              "Refresh"
+            )
+          ),
+
+          loading
+            ? h(
+                "div",
+                { className: "loading" },
+                "Loading..."
+              )
+            : profiles.length === 0
+              ? h(
+                  "div",
+                  { className: "empty" },
+                  "No PRISM profiles found."
+                )
+              : h(
+                  "div",
+                  { className: "table-wrap" },
+
+                  h(
+                    "table",
+                    null,
+
+                    h(
+                      "thead",
+                      null,
+
+                      h(
+                        "tr",
+                        null,
+
+                        h("th", null, "Name"),
+                        h("th", null, "Email"),
+                        h("th", null, "Role"),
+                        h("th", null, "Active")
+                      )
+                    ),
+
+                    h(
+                      "tbody",
+                      null,
+
+                      profiles.map(user =>
+                        h(
+                          "tr",
+                          { key: user.id },
+
+                          h(
+                            "td",
+                            null,
+                            user.display_name || "—"
+                          ),
+
+                          h(
+                            "td",
+                            null,
+                            user.email || "—"
+                          ),
+
+                          h(
+                            "td",
+                            null,
+                            roleLabel(user.role)
+                          ),
+
+                          h(
+                            "td",
+                            null,
+                            user.active ? "Yes" : "No"
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+        )
+      );
+    }
+
+    createRoot(
+      document.getElementById("root")
+    ).render(
+      h(App)
+    );
+  </script>
 </body>
-</html>
+  </html>
