@@ -671,7 +671,8 @@ function NewPatientModal({
     key,
     options,
     placeholder,
-    required = false
+    required = false,
+    onChangeOverride = null
   ) {
     return React.createElement(
       "div",
@@ -700,11 +701,18 @@ function NewPatientModal({
         {
           value: form[key],
           required,
-          onChange: (e) =>
-            updateField(
-              key,
-              e.target.value
-            )
+          onChange: (e) => {
+            if (onChangeOverride) {
+              onChangeOverride(
+                e.target.value
+              );
+            } else {
+              updateField(
+                key,
+                e.target.value
+              );
+            }
+          }
         },
 
         React.createElement(
@@ -1037,7 +1045,8 @@ function NewPatientModal({
                   })
                 ),
                 "Select ward",
-                true
+                true,
+                updateWard
               ),
 
               selectField(
@@ -1098,7 +1107,8 @@ function NewPatientModal({
             React.createElement(
               "div",
               {
-                className: "field"
+                className:
+                  "field"
               },
 
               React.createElement(
@@ -1240,4 +1250,4 @@ function toLocalDateTimeValue(
     ":" +
     pad(date.getMinutes())
   );
-                }
+                        }
