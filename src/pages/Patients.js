@@ -64,12 +64,11 @@ function NewPatientModal({ onClose, onCreated }) {
       const [
         wardsResult,
         bedsResult,
-        profilesResult,
-        userResult
+        profilesResult
       ] = await Promise.all([
         db
           .from("wards")
-          .select("id,name,department_id")
+          .select("id,name,department_id,unit_id")
           .eq("active", true)
           .order("name"),
 
@@ -81,11 +80,11 @@ function NewPatientModal({ onClose, onCreated }) {
 
         db
           .from("profiles")
-          .select("id,display_name,email,role,department_id")
+          .select(
+            "id,display_name,email,role,department_id,active"
+          )
           .eq("active", true)
-          .order("display_name"),
-
-        db.auth.getUser()
+          .order("display_name")
       ]);
 
       if (wardsResult.error) {
@@ -100,27 +99,36 @@ function NewPatientModal({ onClose, onCreated }) {
         throw profilesResult.error;
       }
 
-      setWards(wardsResult.data || []);
-      setBeds(bedsResult.data || []);
-
+      const loadedWards = wardsResult.data || [];
+      const loadedBeds = bedsResult.data || [];
       const profiles = profilesResult.data || [];
 
+      setWards(loadedWards);
+      setBeds(loadedBeds);
+
       const mos = profiles.filter(
-        (profile) => profile.role === "medical_officer"
+        (profile) =>
+          profile.role === "medical_officer"
       );
 
       const specs = profiles.filter(
-        (profile) => profile.role === "specialist"
+        (profile) =>
+          ["specialist", "consultant"].includes(
+            profile.role
+          )
       );
 
       setMedicalOfficers(mos);
       setSpecialists(specs);
 
-      const currentUserId = userResult?.data?.user?.id;
+      const {
+        data: { user }
+      } = await db.auth.getUser();
 
-      if (currentUserId) {
+      if (user) {
         const currentProfile = profiles.find(
-          (profile) => profile.id === currentUserId
+          (profile) =>
+            profile.id === user.id
         );
 
         if (
@@ -129,15 +137,15 @@ function NewPatientModal({ onClose, onCreated }) {
         ) {
           setForm((previous) => ({
             ...previous,
-            responsible_mo_id: currentUserId
+            responsible_mo_id: user.id
           }));
         }
       }
 
-      if ((wardsResult.data || []).length === 1) {
+      if (loadedWards.length === 1) {
         setForm((previous) => ({
           ...previous,
-          ward_id: wardsResult.data[0].id
+          ward_id: loadedWards[0].id
         }));
       }
     } catch (err) {
@@ -163,7 +171,8 @@ function NewPatientModal({ onClose, onCreated }) {
     }
 
     return beds.filter(
-      (bed) => bed.ward_id === form.ward_id
+      (bed) =>
+        bed.ward_id === form.ward_id
     );
   }, [beds, form.ward_id]);
 
@@ -190,6 +199,20 @@ function NewPatientModal({ onClose, onCreated }) {
       return;
     }
 
+    if (!form.age && form.age !== 0) {
+      setError("Age is required.");
+      return;
+    }
+
+    if (
+      Number.isNaN(Number(form.age)) ||
+      Number(form.age) < 0 ||
+      Number(form.age) > 130
+    ) {
+      setError("Age must be between 0 and 130.");
+      return;
+    }
+
     if (!form.sex) {
       setError("Sex is required.");
       return;
@@ -201,116 +224,105 @@ function NewPatientModal({ onClose, onCreated }) {
     }
 
     if (!form.reason_for_admission.trim()) {
-      setError("Reason for admission is required.");
+      setError(
+        "Reason for admission is required."
+      );
       return;
     }
 
     if (!form.responsible_mo_id) {
-      setError("Responsible Medical Officer is required.");
+      setError(
+        "Responsible Medical Officer is required."
+      );
+      return;
+    }
+
+    const selectedWard = wards.find(
+      (ward) =>
+        ward.id === form.ward_id
+    );
+
+    if (!selectedWard) {
+      setError(
+        "The selected ward could not be found."
+      );
       return;
     }
 
     if (
-      form.age !== "" &&
-      (
-        Number.isNaN(Number(form.age)) ||
-        Number(form.age) < 0 ||
-        Number(form.age) > 130
-      )
+      !selectedWard.unit_id ||
+      !selectedWard.department_id
     ) {
-      setError("Age must be between 0 and 130.");
+      setError(
+        "The selected ward is not linked to a clinical unit and department."
+      );
       return;
     }
 
     setSaving(true);
 
     try {
-      const userResult = await db.auth.getUser();
-      const currentUser = userResult?.data?.user;
+      const { data: created, error: createError } =
+        await db.rpc(
+          "prism_create_patient_admission",
+          {
+            p_patient_code:
+              form.patient_code.trim(),
 
-      if (!currentUser) {
-        throw new Error(
-          "You must be signed in to create a patient."
+            p_full_name:
+              form.full_name.trim(),
+
+            p_age:
+              Number(form.age),
+
+            p_sex:
+              form.sex,
+
+            p_admission_datetime:
+              form.admission_datetime
+                ? new Date(
+                    form.admission_datetime
+                  ).toISOString()
+                : new Date().toISOString(),
+
+            p_reason_for_admission:
+              form.reason_for_admission.trim(),
+
+            p_working_diagnosis:
+              form.working_diagnosis.trim() ||
+              null,
+
+            p_department_id:
+              selectedWard.department_id,
+
+            p_unit_id:
+              selectedWard.unit_id,
+
+            p_ward_id:
+              form.ward_id,
+
+            p_bed_id:
+              form.bed_id || null,
+
+            p_responsible_mo_id:
+              form.responsible_mo_id,
+
+            p_specialist_id:
+              form.specialist_id || null
+          }
         );
+
+      if (createError) {
+        throw createError;
       }
 
-      const patientPayload = {
-        patient_code: form.patient_code.trim(),
-        full_name: form.full_name.trim(),
-        age:
-          form.age === ""
-            ? null
-            : Number(form.age),
-        sex: form.sex,
-        demo: form.demo,
-        created_by: currentUser.id
-      };
-
-      const patientResult = await db
-        .from("patients")
-        .insert(patientPayload)
-        .select("id")
-        .single();
-
-      if (patientResult.error) {
-        throw patientResult.error;
-      }
-
-      const admissionPayload = {
-        patient_id: patientResult.data.id,
-        ward_id: form.ward_id,
-        bed_id: form.bed_id || null,
-
-        admission_datetime:
-          form.admission_datetime
-            ? new Date(
-                form.admission_datetime
-              ).toISOString()
-            : new Date().toISOString(),
-
-        status: "active",
-
-        responsible_mo_id:
-          form.responsible_mo_id,
-
-        specialist_id:
-          form.specialist_id || null,
-
-        reason_for_admission:
-          form.reason_for_admission.trim(),
-
-        brief_summary:
-          form.brief_summary.trim() || null,
-
-        working_diagnosis:
-          form.working_diagnosis.trim() || null,
-
-        relevant_background:
-          form.relevant_background.trim() || null,
-
-        baseline_clinical_status:
-          form.baseline_clinical_status.trim() || null,
-
-        baseline_investigations:
-          form.baseline_investigations.trim() || null,
-
-        initial_plan:
-          form.initial_plan.trim() || null,
-
-        goals_targets:
-          form.goals_targets.trim() || null,
-
-        created_by: currentUser.id
-      };
-
-      const admissionResult = await db
-        .from("admissions")
-        .insert(admissionPayload)
-        .select("id")
-        .single();
-
-      if (admissionResult.error) {
-        throw admissionResult.error;
+      if (
+        !created?.patient_id ||
+        !created?.admission_id
+      ) {
+        throw new Error(
+          "The server did not return the created patient and admission."
+        );
       }
 
       if (onCreated) {
@@ -333,7 +345,10 @@ function NewPatientModal({ onClose, onCreated }) {
     {
       className: "modal-backdrop",
       onMouseDown: (event) => {
-        if (event.target === event.currentTarget) {
+        if (
+          event.target ===
+          event.currentTarget
+        ) {
           onClose();
         }
       }
@@ -349,7 +364,9 @@ function NewPatientModal({ onClose, onCreated }) {
 
       React.createElement(
         "div",
-        { className: "modal-header" },
+        {
+          className: "modal-header"
+        },
 
         React.createElement(
           "div",
@@ -357,13 +374,17 @@ function NewPatientModal({ onClose, onCreated }) {
 
           React.createElement(
             "div",
-            { className: "modal-title" },
+            {
+              className: "modal-title"
+            },
             "New Patient"
           ),
 
           React.createElement(
             "div",
-            { className: "page-subtitle" },
+            {
+              className: "page-subtitle"
+            },
             "Create patient and active admission"
           )
         ),
@@ -372,7 +393,8 @@ function NewPatientModal({ onClose, onCreated }) {
           "button",
           {
             type: "button",
-            className: "btn btn-secondary",
+            className:
+              "btn btn-secondary",
             onClick: onClose,
             disabled: saving
           },
@@ -381,13 +403,13 @@ function NewPatientModal({ onClose, onCreated }) {
       ),
 
       loadingOptions
-
         ? React.createElement(
             "div",
-            { className: "loading" },
+            {
+              className: "loading"
+            },
             "Loading clinical options..."
           )
-
         : React.createElement(
             "form",
             {
@@ -398,7 +420,8 @@ function NewPatientModal({ onClose, onCreated }) {
               ? React.createElement(
                   "div",
                   {
-                    className: "alert alert-error",
+                    className:
+                      "alert alert-error",
                     style: {
                       marginBottom: "16px"
                     }
@@ -409,17 +432,23 @@ function NewPatientModal({ onClose, onCreated }) {
 
             React.createElement(
               "div",
-              { className: "section-title" },
+              {
+                className: "section-title"
+              },
               "Patient Identity"
             ),
 
             React.createElement(
               "div",
-              { className: "form-grid" },
+              {
+                className: "form-grid"
+              },
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -427,21 +456,28 @@ function NewPatientModal({ onClose, onCreated }) {
                   "Patient Code *"
                 ),
 
-                React.createElement("input", {
-                  value: form.patient_code,
-                  onChange: (e) =>
-                    updateField(
-                      "patient_code",
-                      e.target.value
-                    ),
-                  placeholder: "e.g. PT-0001",
-                  required: true
-                })
+                React.createElement(
+                  "input",
+                  {
+                    value:
+                      form.patient_code,
+                    onChange: (e) =>
+                      updateField(
+                        "patient_code",
+                        e.target.value
+                      ),
+                    placeholder:
+                      "e.g. PT-0001",
+                    required: true
+                  }
+                )
               ),
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -449,45 +485,59 @@ function NewPatientModal({ onClose, onCreated }) {
                   "Full Name *"
                 ),
 
-                React.createElement("input", {
-                  value: form.full_name,
-                  onChange: (e) =>
-                    updateField(
-                      "full_name",
-                      e.target.value
-                    ),
-                  placeholder: "Patient full name",
-                  required: true
-                })
+                React.createElement(
+                  "input",
+                  {
+                    value:
+                      form.full_name,
+                    onChange: (e) =>
+                      updateField(
+                        "full_name",
+                        e.target.value
+                      ),
+                    placeholder:
+                      "Patient full name",
+                    required: true
+                  }
+                )
               ),
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
                   null,
-                  "Age"
+                  "Age *"
                 ),
 
-                React.createElement("input", {
-                  type: "number",
-                  min: "0",
-                  max: "130",
-                  value: form.age,
-                  onChange: (e) =>
-                    updateField(
-                      "age",
-                      e.target.value
-                    ),
-                  placeholder: "Age"
-                })
+                React.createElement(
+                  "input",
+                  {
+                    type: "number",
+                    min: "0",
+                    max: "130",
+                    value: form.age,
+                    onChange: (e) =>
+                      updateField(
+                        "age",
+                        e.target.value
+                      ),
+                    placeholder:
+                      "Age",
+                    required: true
+                  }
+                )
               ),
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -509,26 +559,42 @@ function NewPatientModal({ onClose, onCreated }) {
 
                   React.createElement(
                     "option",
-                    { value: "" },
+                    {
+                      value: ""
+                    },
                     "Select sex"
                   ),
 
                   React.createElement(
                     "option",
-                    { value: "male" },
+                    {
+                      value: "male"
+                    },
                     "Male"
                   ),
 
                   React.createElement(
                     "option",
-                    { value: "female" },
+                    {
+                      value: "female"
+                    },
                     "Female"
                   ),
 
                   React.createElement(
                     "option",
-                    { value: "other" },
+                    {
+                      value: "other"
+                    },
                     "Other"
+                  ),
+
+                  React.createElement(
+                    "option",
+                    {
+                      value: "unknown"
+                    },
+                    "Unknown"
                   )
                 )
               )
@@ -537,18 +603,22 @@ function NewPatientModal({ onClose, onCreated }) {
             React.createElement(
               "label",
               {
-                className: "checkbox-row"
+                className:
+                  "checkbox-row"
               },
 
-              React.createElement("input", {
-                type: "checkbox",
-                checked: form.demo,
-                onChange: (e) =>
-                  updateField(
-                    "demo",
-                    e.target.checked
-                  )
-              }),
+              React.createElement(
+                "input",
+                {
+                  type: "checkbox",
+                  checked: form.demo,
+                  onChange: (e) =>
+                    updateField(
+                      "demo",
+                      e.target.checked
+                    )
+                }
+              ),
 
               React.createElement(
                 "span",
@@ -560,7 +630,8 @@ function NewPatientModal({ onClose, onCreated }) {
             React.createElement(
               "div",
               {
-                className: "section-title",
+                className:
+                  "section-title",
                 style: {
                   marginTop: "24px"
                 }
@@ -570,11 +641,15 @@ function NewPatientModal({ onClose, onCreated }) {
 
             React.createElement(
               "div",
-              { className: "form-grid" },
+              {
+                className: "form-grid"
+              },
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -585,7 +660,8 @@ function NewPatientModal({ onClose, onCreated }) {
                 React.createElement(
                   "select",
                   {
-                    value: form.ward_id,
+                    value:
+                      form.ward_id,
                     onChange: (e) =>
                       handleWardChange(
                         e.target.value
@@ -595,7 +671,9 @@ function NewPatientModal({ onClose, onCreated }) {
 
                   React.createElement(
                     "option",
-                    { value: "" },
+                    {
+                      value: ""
+                    },
                     "Select ward"
                   ),
 
@@ -614,7 +692,9 @@ function NewPatientModal({ onClose, onCreated }) {
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -625,7 +705,8 @@ function NewPatientModal({ onClose, onCreated }) {
                 React.createElement(
                   "select",
                   {
-                    value: form.bed_id,
+                    value:
+                      form.bed_id,
                     onChange: (e) =>
                       updateField(
                         "bed_id",
@@ -637,28 +718,33 @@ function NewPatientModal({ onClose, onCreated }) {
 
                   React.createElement(
                     "option",
-                    { value: "" },
+                    {
+                      value: ""
+                    },
                     form.ward_id
                       ? "Select bed"
                       : "Select ward first"
                   ),
 
-                  availableBeds.map((bed) =>
-                    React.createElement(
-                      "option",
-                      {
-                        key: bed.id,
-                        value: bed.id
-                      },
-                      bed.name
-                    )
+                  availableBeds.map(
+                    (bed) =>
+                      React.createElement(
+                        "option",
+                        {
+                          key: bed.id,
+                          value: bed.id
+                        },
+                        bed.name
+                      )
                   )
                 )
               ),
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -681,28 +767,33 @@ function NewPatientModal({ onClose, onCreated }) {
 
                   React.createElement(
                     "option",
-                    { value: "" },
+                    {
+                      value: ""
+                    },
                     "Select Medical Officer"
                   ),
 
-                  medicalOfficers.map((profile) =>
-                    React.createElement(
-                      "option",
-                      {
-                        key: profile.id,
-                        value: profile.id
-                      },
-                      profile.display_name ||
-                        profile.email ||
-                        "Medical Officer"
-                    )
+                  medicalOfficers.map(
+                    (profile) =>
+                      React.createElement(
+                        "option",
+                        {
+                          key: profile.id,
+                          value: profile.id
+                        },
+                        profile.display_name ||
+                          profile.email ||
+                          "Medical Officer"
+                      )
                   )
                 )
               ),
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -724,28 +815,33 @@ function NewPatientModal({ onClose, onCreated }) {
 
                   React.createElement(
                     "option",
-                    { value: "" },
+                    {
+                      value: ""
+                    },
                     "Not assigned"
                   ),
 
-                  specialists.map((profile) =>
-                    React.createElement(
-                      "option",
-                      {
-                        key: profile.id,
-                        value: profile.id
-                      },
-                      profile.display_name ||
-                        profile.email ||
-                        "Specialist"
-                    )
+                  specialists.map(
+                    (profile) =>
+                      React.createElement(
+                        "option",
+                        {
+                          key: profile.id,
+                          value: profile.id
+                        },
+                        profile.display_name ||
+                          profile.email ||
+                          "Consultant / Specialist"
+                      )
                   )
                 )
               ),
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -753,22 +849,28 @@ function NewPatientModal({ onClose, onCreated }) {
                   "Admission Date & Time *"
                 ),
 
-                React.createElement("input", {
-                  type: "datetime-local",
-                  value:
-                    form.admission_datetime,
-                  onChange: (e) =>
-                    updateField(
-                      "admission_datetime",
-                      e.target.value
-                    ),
-                  required: true
-                })
+                React.createElement(
+                  "input",
+                  {
+                    type:
+                      "datetime-local",
+                    value:
+                      form.admission_datetime,
+                    onChange: (e) =>
+                      updateField(
+                        "admission_datetime",
+                        e.target.value
+                      ),
+                    required: true
+                  }
+                )
               ),
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -776,25 +878,29 @@ function NewPatientModal({ onClose, onCreated }) {
                   "Reason for Admission *"
                 ),
 
-                React.createElement("input", {
-                  value:
-                    form.reason_for_admission,
-                  onChange: (e) =>
-                    updateField(
-                      "reason_for_admission",
-                      e.target.value
-                    ),
-                  placeholder:
-                    "Why is the patient being admitted?",
-                  required: true
-                })
+                React.createElement(
+                  "input",
+                  {
+                    value:
+                      form.reason_for_admission,
+                    onChange: (e) =>
+                      updateField(
+                        "reason_for_admission",
+                        e.target.value
+                      ),
+                    placeholder:
+                      "Why is the patient being admitted?",
+                    required: true
+                  }
+                )
               )
             ),
 
             React.createElement(
               "div",
               {
-                className: "section-title",
+                className:
+                  "section-title",
                 style: {
                   marginTop: "24px"
                 }
@@ -804,11 +910,15 @@ function NewPatientModal({ onClose, onCreated }) {
 
             React.createElement(
               "div",
-              { className: "form-grid" },
+              {
+                className: "form-grid"
+              },
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -819,22 +929,23 @@ function NewPatientModal({ onClose, onCreated }) {
                 React.createElement(
                   "textarea",
                   {
-                    value: form.brief_summary,
+                    value:
+                      form.brief_summary,
                     onChange: (e) =>
                       updateField(
                         "brief_summary",
                         e.target.value
                       ),
-                    rows: 3,
-                    placeholder:
-                      "Concise admission summary"
+                    rows: 3
                   }
                 )
               ),
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -852,16 +963,16 @@ function NewPatientModal({ onClose, onCreated }) {
                         "working_diagnosis",
                         e.target.value
                       ),
-                    rows: 3,
-                    placeholder:
-                      "Initial working diagnosis"
+                    rows: 3
                   }
                 )
               ),
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -879,16 +990,16 @@ function NewPatientModal({ onClose, onCreated }) {
                         "relevant_background",
                         e.target.value
                       ),
-                    rows: 3,
-                    placeholder:
-                      "Relevant comorbidities, history, medications, etc."
+                    rows: 3
                   }
                 )
               ),
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -906,16 +1017,16 @@ function NewPatientModal({ onClose, onCreated }) {
                         "baseline_clinical_status",
                         e.target.value
                       ),
-                    rows: 3,
-                    placeholder:
-                      "Baseline vitals, examination and clinical state"
+                    rows: 3
                   }
                 )
               ),
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -933,16 +1044,16 @@ function NewPatientModal({ onClose, onCreated }) {
                         "baseline_investigations",
                         e.target.value
                       ),
-                    rows: 3,
-                    placeholder:
-                      "ECG, labs, imaging and other available results"
+                    rows: 3
                   }
                 )
               ),
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -953,22 +1064,23 @@ function NewPatientModal({ onClose, onCreated }) {
                 React.createElement(
                   "textarea",
                   {
-                    value: form.initial_plan,
+                    value:
+                      form.initial_plan,
                     onChange: (e) =>
                       updateField(
                         "initial_plan",
                         e.target.value
                       ),
-                    rows: 3,
-                    placeholder:
-                      "Initial management plan"
+                    rows: 3
                   }
                 )
               ),
 
               React.createElement(
                 "div",
-                { className: "field" },
+                {
+                  className: "field"
+                },
 
                 React.createElement(
                   "label",
@@ -986,9 +1098,7 @@ function NewPatientModal({ onClose, onCreated }) {
                         "goals_targets",
                         e.target.value
                       ),
-                    rows: 3,
-                    placeholder:
-                      "What needs to improve or be achieved before discharge?"
+                    rows: 3
                   }
                 )
               )
@@ -999,7 +1109,8 @@ function NewPatientModal({ onClose, onCreated }) {
               {
                 className: "row wrap",
                 style: {
-                  justifyContent: "flex-end",
+                  justifyContent:
+                    "flex-end",
                   marginTop: "24px",
                   gap: "10px"
                 }
@@ -1009,7 +1120,8 @@ function NewPatientModal({ onClose, onCreated }) {
                 "button",
                 {
                   type: "button",
-                  className: "btn btn-secondary",
+                  className:
+                    "btn btn-secondary",
                   onClick: onClose,
                   disabled: saving
                 },
@@ -1020,7 +1132,8 @@ function NewPatientModal({ onClose, onCreated }) {
                 "button",
                 {
                   type: "submit",
-                  className: "btn btn-primary",
+                  className:
+                    "btn btn-primary",
                   disabled: saving
                 },
                 saving
@@ -1039,32 +1152,44 @@ export default function Patients({
   onRefresh,
   onOpenPatient
 }) {
-  const [search, setSearch] = useState("");
-  const [showNewPatient, setShowNewPatient] =
-    useState(false);
+  const [search, setSearch] =
+    useState("");
 
-  const filteredPatients = useMemo(() => {
-    const term = search.trim().toLowerCase();
+  const [
+    showNewPatient,
+    setShowNewPatient
+  ] = useState(false);
 
-    if (!term) {
-      return patients;
-    }
+  const filteredPatients =
+    useMemo(() => {
+      const term =
+        search.trim().toLowerCase();
 
-    return patients.filter((patient) => {
-      const code = String(
-        patient.patient_code || ""
-      ).toLowerCase();
+      if (!term) {
+        return patients;
+      }
 
-      const name = String(
-        patient.full_name || ""
-      ).toLowerCase();
+      return patients.filter(
+        (patient) => {
+          const code =
+            String(
+              patient.patient_code ||
+                ""
+            ).toLowerCase();
 
-      return (
-        name.includes(term) ||
-        code.includes(term)
+          const name =
+            String(
+              patient.full_name ||
+                ""
+            ).toLowerCase();
+
+          return (
+            name.includes(term) ||
+            code.includes(term)
+          );
+        }
       );
-    });
-  }, [patients, search]);
+    }, [patients, search]);
 
   async function handleCreated() {
     if (onRefresh) {
@@ -1078,7 +1203,9 @@ export default function Patients({
 
     React.createElement(
       "div",
-      { className: "row wrap" },
+      {
+        className: "row wrap"
+      },
 
       React.createElement(
         "div",
@@ -1086,13 +1213,19 @@ export default function Patients({
 
         React.createElement(
           "div",
-          { className: "page-title" },
+          {
+            className:
+              "page-title"
+          },
           "Patients"
         ),
 
         React.createElement(
           "div",
-          { className: "page-subtitle" },
+          {
+            className:
+              "page-subtitle"
+          },
           "Patient and admission overview"
         )
       ),
@@ -1109,9 +1242,12 @@ export default function Patients({
         React.createElement(
           "button",
           {
-            className: "btn btn-primary",
+            className:
+              "btn btn-primary",
             onClick: () =>
-              setShowNewPatient(true)
+              setShowNewPatient(
+                true
+              )
           },
           "+ New Patient"
         ),
@@ -1119,7 +1255,8 @@ export default function Patients({
         React.createElement(
           "button",
           {
-            className: "btn btn-secondary",
+            className:
+              "btn btn-secondary",
             onClick: onRefresh,
             disabled: loading
           },
@@ -1138,7 +1275,9 @@ export default function Patients({
 
       React.createElement(
         "div",
-        { className: "field" },
+        {
+          className: "field"
+        },
 
         React.createElement(
           "label",
@@ -1146,54 +1285,69 @@ export default function Patients({
           "Search"
         ),
 
-        React.createElement("input", {
-          type: "search",
-          value: search,
-          onChange: (e) =>
-            setSearch(e.target.value),
-          placeholder:
-            "Search patient or patient code"
-        })
+        React.createElement(
+          "input",
+          {
+            type: "search",
+            value: search,
+            onChange: (e) =>
+              setSearch(
+                e.target.value
+              ),
+            placeholder:
+              "Search patient or patient code"
+          }
+        )
       )
     ),
 
     loading
-
       ? React.createElement(
           "div",
-          { className: "loading" },
+          {
+            className: "loading"
+          },
           "Loading patients..."
         )
+      : filteredPatients.length ===
+        0
+      ? React.createElement(
+          "div",
+          {
+            className: "card"
+          },
 
-      : filteredPatients.length === 0
-
-        ? React.createElement(
+          React.createElement(
             "div",
-            { className: "card" },
+            {
+              className: "empty"
+            },
 
-            React.createElement(
-              "div",
-              { className: "empty" },
-
-              search
-                ? "No patients match your search."
-                : "No patients found."
-            )
+            search
+              ? "No patients match your search."
+              : "No patients found."
           )
+        )
+      : React.createElement(
+          "div",
+          {
+            className:
+              "grid grid-2"
+          },
 
-        : React.createElement(
-            "div",
-            { className: "grid grid-2" },
-
-            filteredPatients.map((patient) => {
+          filteredPatients.map(
+            (patient) => {
               const admissions =
-                patient.admissions || [];
+                patient.admissions ||
+                [];
 
               const activeAdmission =
                 admissions.find(
                   (admission) =>
-                    admission.status === "active"
-                ) || admissions[0];
+                    admission.status ===
+                    "active"
+                ) ||
+                admissions[0];
 
               return React.createElement(
                 "div",
@@ -1202,12 +1356,17 @@ export default function Patients({
                   className:
                     "card patient-card",
                   onClick: () =>
-                    onOpenPatient(patient)
+                    onOpenPatient(
+                      patient
+                    )
                 },
 
                 React.createElement(
                   "div",
-                  { className: "row wrap" },
+                  {
+                    className:
+                      "row wrap"
+                  },
 
                   React.createElement(
                     "div",
@@ -1252,7 +1411,8 @@ export default function Patients({
                     className:
                       "detail-grid",
                     style: {
-                      marginTop: "14px"
+                      marginTop:
+                        "14px"
                     }
                   },
 
@@ -1279,7 +1439,8 @@ export default function Patients({
                           "detail-value"
                       },
                       `${patient.age ?? "—"} / ${
-                        patient.sex || "—"
+                        patient.sex ||
+                        "—"
                       }`
                     )
                   ),
@@ -1370,7 +1531,8 @@ export default function Patients({
                   "div",
                   {
                     style: {
-                      marginTop: "14px"
+                      marginTop:
+                        "14px"
                     }
                   },
 
@@ -1394,18 +1556,22 @@ export default function Patients({
                   )
                 )
               );
-            })
-          ),
+            }
+          )
+        ),
 
     showNewPatient
       ? React.createElement(
           NewPatientModal,
           {
             onClose: () =>
-              setShowNewPatient(false),
-            onCreated: handleCreated
+              setShowNewPatient(
+                false
+              ),
+            onCreated:
+              handleCreated
           }
         )
       : null
   );
-                  }
+    }
