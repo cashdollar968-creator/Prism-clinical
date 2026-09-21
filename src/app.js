@@ -1,15 +1,16 @@
-import React from "https://esm.sh/react@18";
-import { createRoot } from "https://esm.sh/react-dom@18/client";
+import React from "https://esm.sh/react@18.3.1";
+import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 
 import Login from "./pages/Login.js";
 import Dashboard from "./pages/Dashboard.js";
-import Patients from "./pages/Patients.js?v=8904a26";
+import Patients from "./pages/Patients.js";
 import Patient from "./pages/Patient.js";
 import SpecialistQueue from "./pages/SpecialistQueue.js";
 import Administration from "./pages/Administration.js";
 
 import { db } from "./supabase.js";
 
+const h = React.createElement;
 
 function App() {
   const [session, setSession] = React.useState(null);
@@ -22,13 +23,11 @@ function App() {
   const prismSessionIdRef = React.useRef(null);
   const heartbeatTimerRef = React.useRef(null);
 
-
-  /* ========================================================
-     PROFILE
-     ======================================================== */
-
   async function loadProfile(userId) {
-    if (!userId) return null;
+    if (!userId) {
+      setProfile(null);
+      return null;
+    }
 
     const { data, error } = await db
       .from("profiles")
@@ -42,133 +41,54 @@ function App() {
       return null;
     }
 
-    setProfile(data);
-    return data;
+    setProfile(data || null);
+    return data || null;
   }
 
-
-  /* ========================================================
-     ACTIVITY
-     ======================================================== */
-
-  async function recordActivity({
-    action,
-    entityType = null,
-    entityId = null,
-    patientId = null,
-    route = null,
-    metadata = {}
-  }) {
-    const userId = session?.user?.id;
-
-    if (!userId) return;
-
+  async function recordActivity(eventType, metadata = {}) {
     try {
-      const { error } = await db
-        .from("activity_events")
-        .insert({
-          actor_id: userId,
-          session_id: prismSessionIdRef.current || null,
-          action,
-          entity_type: entityType,
-          entity_id: entityId,
-          patient_id: patientId,
-          route,
-          metadata
-        });
+      if (!session?.user?.id) return;
 
-      if (error) {
-        console.error(
-          "Activity logging error:",
-          error
-        );
-      }
+      await db.from("activity_events").insert({
+        user_id: session.user.id,
+        session_id: prismSessionIdRef.current,
+        event_type: eventType,
+        metadata
+      });
     } catch (error) {
-      console.error(
-        "Activity logging exception:",
-        error
-      );
+      console.error("Activity recording error:", error);
     }
   }
 
-
-  /* ========================================================
-     PRISM SESSION
-     ======================================================== */
-
-  async function startPrismSession(user, userProfile) {
-    if (!user?.id) return null;
+  async function startPrismSession(user) {
+    if (!user?.id) return;
 
     try {
       const { data, error } = await db
         .from("user_sessions")
         .insert({
           user_id: user.id,
-          role_snapshot:
-            userProfile?.role || "unknown",
-          location_label: "Web",
-          session_type: "web",
-          user_agent:
-            typeof navigator !== "undefined"
-              ? navigator.userAgent
-              : null
+          started_at: new Date().toISOString(),
+          last_seen_at: new Date().toISOString()
         })
         .select("id")
         .single();
 
       if (error) {
-        console.error(
-          "PRISM session creation error:",
-          error
-        );
-
-        return null;
+        console.error("Session start error:", error);
+        return;
       }
 
-      prismSessionIdRef.current = data.id;
+      prismSessionIdRef.current = data?.id || null;
 
-      /*
-       * Login activity is optional.
-       * If it fails, it must never stop the application.
-       */
-      try {
-        await db
-          .from("activity_events")
-          .insert({
-            actor_id: user.id,
-            session_id: data.id,
-            action: "login",
-            entity_type: "session",
-            entity_id: data.id,
-            route: "login",
-            metadata: {
-              role:
-                userProfile?.role || "unknown"
-            }
-          });
-      } catch (error) {
-        console.error(
-          "Login activity error:",
-          error
-        );
-      }
-
-      return data.id;
-
+      await recordActivity("session_started");
     } catch (error) {
-      console.error(
-        "PRISM session exception:",
-        error
-      );
-
-      return null;
+      console.error("Session initialization error:", error);
     }
   }
-
 
   async function heartbeatSession() {
-    const sessionId =
-      prismSessionIdRef.current;
+    const sessionId = prismSessionIdRef.current;
 
     if (!sessionId) return;
 
@@ -176,263 +96,129 @@ function App() {
       await db
         .from("user_sessions")
         .update({
-          last_seen_at:
-            new Date().toISOString()
+          last_seen_at: new Date().toISOString()
         })
-        .eq("id", sessionId)
-        .is("ended_at", null);
+        .eq("id", sessionId);
     } catch (error) {
-      console.error(
-        "Heartbeat error:",
-        error
-      );
+      console.error("Session heartbeat error:", error);
     }
   }
-
 
   async function endPrismSession() {
-    const sessionId =
-      prismSessionIdRef.current;
+    const sessionId = prismSessionIdRef.current;
 
     if (!sessionId) return;
-
-    const now =
-      new Date().toISOString();
 
     try {
       await db
         .from("user_sessions")
         .update({
-          ended_at: now,
-          last_seen_at: now
+          ended_at: new Date().toISOString(),
+          last_seen_at: new Date().toISOString()
         })
-        .eq("id", sessionId)
-        .is("ended_at", null);
-    } catch (error) {
-      console.error(
-        "Session closing error:",
-        error
-      );
-    }
+        .eq("id", sessionId);
 
-    prismSessionIdRef.current = null;
+      prismSessionIdRef.current = null;
+    } catch (error) {
+      console.error("Session end error:", error);
+    }
   }
 
-
-  /* ========================================================
-     AUTHENTICATION
-     ======================================================== */
-
-  React.useEffect(() => {
-    let mounted = true;
-
-    async function initialize() {
-      try {
-        const {
-          data: {
-            session: currentSession
-          }
-        } = await db.auth.getSession();
-
-        if (!mounted) return;
-
-        setSession(currentSession);
-
-        if (currentSession?.user) {
-          const userProfile =
-            await loadProfile(
-              currentSession.user.id
-            );
-
-          if (
-            mounted &&
-            userProfile
-          ) {
-            await startPrismSession(
-              currentSession.user,
-              userProfile
-            );
-          }
-        }
-
-      } catch (error) {
-        console.error(
-          "PRISM initialization error:",
-          error
-        );
-      }
-
-      if (mounted) {
-        setLoading(false);
-      }
-    }
-
-    initialize();
-
-
-    const {
-      data: {
-        subscription
-      }
-    } = db.auth.onAuthStateChange(
-      (event, newSession) => {
-
-        /*
-         * Do not perform large async Supabase
-         * operations directly inside the auth callback.
-         */
-        setTimeout(async () => {
-
-          if (!mounted) return;
-
-          setSession(newSession);
-
-          if (!newSession?.user) {
-            setProfile(null);
-            return;
-          }
-
-          const userProfile =
-            await loadProfile(
-              newSession.user.id
-            );
-
-          if (
-            mounted &&
-            userProfile &&
-            !prismSessionIdRef.current
-          ) {
-            await startPrismSession(
-              newSession.user,
-              userProfile
-            );
-          }
-
-        }, 0);
-      }
-    );
-
-
-    return () => {
-      mounted = false;
-
-      subscription.unsubscribe();
-
-      if (heartbeatTimerRef.current) {
-        clearInterval(
-          heartbeatTimerRef.current
-        );
-
-        heartbeatTimerRef.current = null;
-      }
-    };
-
-  }, []);
-
-
-  /* ========================================================
-     HEARTBEAT
-     ======================================================== */
-
-  React.useEffect(() => {
-    if (!session?.user) return;
-
-    if (heartbeatTimerRef.current) {
-      clearInterval(
-        heartbeatTimerRef.current
-      );
-    }
-
-    heartbeatTimerRef.current =
-      setInterval(
-        heartbeatSession,
-        60 * 1000
-      );
-
-    return () => {
-      if (heartbeatTimerRef.current) {
-        clearInterval(
-          heartbeatTimerRef.current
-        );
-
-        heartbeatTimerRef.current = null;
-      }
-    };
-
-  }, [session]);
-
-
-  /* ========================================================
-     PATIENTS
-     ======================================================== */
-
-  async function loadPatients() {
-    if (!session?.user) return;
-
-    setLoading(true);
-
+  async function initializeAuth() {
     try {
-      const { data, error } =
-        await db
-          .from("patients")
-          .select(`
-            *,
-            admissions (
-              id,
-              admission_datetime,
-              discharge_datetime,
-              status,
-              ward_id,
-              bed_id,
-              responsible_mo_id,
-              specialist_id,
-              reason_for_admission,
-              brief_summary,
-              working_diagnosis
-            )
-          `)
-          .order(
-            "created_at",
-            {
-              ascending: false
-            }
-          );
+      const {
+        data: { session: currentSession }
+      } = await db.auth.getSession();
 
-      if (error) {
-        console.error(
-          "Patients loading error:",
-          error
-        );
+      setSession(currentSession);
 
-        setPatients([]);
-      } else {
-        setPatients(data || []);
+      if (currentSession?.user) {
+        await loadProfile(currentSession.user.id);
+        await startPrismSession(currentSession.user);
       }
-
     } catch (error) {
-      console.error(
-        "Patients loading exception:",
-        error
-      );
-
-      setPatients([]);
-
+      console.error("Authentication initialization error:", error);
     } finally {
       setLoading(false);
     }
   }
 
+  React.useEffect(() => {
+    let mounted = true;
+
+    initializeAuth();
+
+    const {
+      data: { subscription }
+    } = db.auth.onAuthStateChange(async (event, newSession) => {
+      if (!mounted) return;
+
+      setSession(newSession);
+
+      if (event === "SIGNED_OUT") {
+        setProfile(null);
+        setPatients([]);
+        setSelectedPatientId(null);
+        setPage("dashboard");
+        return;
+      }
+
+      if (newSession?.user) {
+        await loadProfile(newSession.user.id);
+      } else {
+        setProfile(null);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription?.unsubscribe();
+
+      if (heartbeatTimerRef.current) {
+        clearInterval(heartbeatTimerRef.current);
+        heartbeatTimerRef.current = null;
+      }
+
+      endPrismSession();
+    };
+  }, []);
 
   React.useEffect(() => {
-    if (session?.user) {
-      loadPatients();
+    if (!session?.user) return;
+
+    if (heartbeatTimerRef.current) {
+      clearInterval(heartbeatTimerRef.current);
     }
-  }, [session]);
 
+    heartbeatTimerRef.current = setInterval(() => {
+      heartbeatSession();
+    }, 60000);
 
-  /* ========================================================
-     NAVIGATION
-     ======================================================== */
+    return () => {
+      if (heartbeatTimerRef.current) {
+        clearInterval(heartbeatTimerRef.current);
+        heartbeatTimerRef.current = null;
+      }
+    };
+  }, [session?.user?.id]);
+
+  async function loadPatients() {
+    try {
+      const { data, error } = await db
+        .from("patients")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Patients loading error:", error);
+        return;
+      }
+
+      setPatients(data || []);
+    } catch (error) {
+      console.error("Patients loading exception:", error);
+    }
+  }
 
   async function openPatient(patientId) {
     if (!patientId) return;
@@ -440,253 +226,251 @@ function App() {
     setSelectedPatientId(patientId);
     setPage("patient");
 
-    await recordActivity({
-      action: "view_patient",
-      entityType: "patient",
-      entityId: patientId,
-      patientId,
-      route: "patient"
+    await recordActivity("patient_opened", {
+      patient_id: patientId
     });
   }
 
+  async function navigate(nextPage) {
+    setPage(nextPage);
 
-  async function navigate(targetPage) {
-    setSelectedPatientId(null);
-    setPage(targetPage);
+    if (nextPage === "patients") {
+      await loadPatients();
+    }
 
-    await recordActivity({
-      action: "view_page",
-      entityType: "page",
-      route: targetPage
+    await recordActivity("navigation", {
+      page: nextPage
     });
   }
-
-
-  /* ========================================================
-     LOGOUT
-     ======================================================== */
 
   async function logout() {
-    await endPrismSession();
+    try {
+      await recordActivity("logout");
 
-    await db.auth.signOut();
+      await endPrismSession();
 
-    setSession(null);
-    setProfile(null);
-    setPatients([]);
-    setPage("dashboard");
-    setSelectedPatientId(null);
+      const { error } = await db.auth.signOut();
+
+      if (error) {
+        console.error("Logout error:", error);
+      }
+
+      setSession(null);
+      setProfile(null);
+      setPatients([]);
+      setSelectedPatientId(null);
+      setPage("dashboard");
+    } catch (error) {
+      console.error("Logout exception:", error);
+    }
   }
 
-
-  /* ========================================================
-     LOADING SCREEN
-     ======================================================== */
-
-  if (loading && !session) {
-    return (
-      <div className="app-loading">
-        <div className="loading-card">
-          <h2>PRISM</h2>
-          <p>Loading...</p>
-        </div>
-      </div>
+  if (loading) {
+    return h(
+      "div",
+      { className: "app-loading" },
+      h(
+        "div",
+        { className: "app-loading-card" },
+        h("div", { className: "app-loading-logo" }, "PRISM"),
+        h(
+          "div",
+          { className: "app-loading-text" },
+          "Loading clinical workspace..."
+        )
+      )
     );
   }
 
-
-  /* ========================================================
-     LOGIN
-     ======================================================== */
-
   if (!session) {
-    return <Login />;
+    return h(Login);
   }
 
+  const commonProps = {
+    session,
+    profile,
+    patients,
+    setPatients,
+    onNavigate: navigate,
+    onOpenPatient: openPatient,
+    onLogout: logout,
+    recordActivity
+  };
 
-  /* ========================================================
-     APPLICATION
-     ======================================================== */
+  let content = null;
 
-  return (
-    <div className="app-shell">
+  if (page === "dashboard") {
+    content = h(Dashboard, commonProps);
+  } else if (page === "patients") {
+    content = h(Patients, commonProps);
+  } else if (page === "patient") {
+    content = h(Patient, {
+      ...commonProps,
+      patientId: selectedPatientId
+    });
+  } else if (page === "specialist") {
+    content = h(SpecialistQueue, commonProps);
+  } else if (page === "administration") {
+    content = h(Administration, commonProps);
+  } else {
+    content = h(Dashboard, commonProps);
+  }
 
-      <header className="topbar">
+  return h(
+    "div",
+    { className: "prism-app" },
 
-        <div className="brand">
+    h(
+      "header",
+      { className: "topbar" },
 
-          <div className="brand-title">
-            PRISM
-          </div>
+      h(
+        "div",
+        { className: "topbar-left" },
 
-          <div className="brand-subtitle">
-            Problem-oriented Inpatient Review
-            & Structured Monitoring
-          </div>
+        h(
+          "button",
+          {
+            type: "button",
+            className: "brand-button",
+            onClick: () => navigate("dashboard")
+          },
+          h("span", { className: "brand-mark" }, "P"),
+          h(
+            "span",
+            { className: "brand-text" },
+            h("strong", null, "PRISM"),
+            h("small", null, "Clinical Documentation")
+          )
+        )
+      ),
 
-        </div>
+      h(
+        "div",
+        { className: "topbar-right" },
 
-
-        <div className="topbar-user">
-
-          <div>
-
-            <strong>
-              {profile?.display_name ||
-                "User"}
-            </strong>
-
-            <div className="user-role">
-              {profile?.role || ""}
-            </div>
-
-          </div>
-
-
-          <button
-            className="btn btn-secondary"
-            onClick={logout}
-          >
-            Logout
-          </button>
-
-        </div>
-
-      </header>
-
-
-      <nav className="main-nav">
-
-        <button
-          className={
-            page === "dashboard"
-              ? "nav-active"
-              : ""
-          }
-          onClick={() =>
-            navigate("dashboard")
-          }
-        >
-          Dashboard
-        </button>
-
-
-        <button
-          className={
-            page === "patients"
-              ? "nav-active"
-              : ""
-          }
-          onClick={() =>
-            navigate("patients")
-          }
-        >
-          Patients
-        </button>
-
-
-        <button
-          className={
-            page === "specialist-queue"
-              ? "nav-active"
-              : ""
-          }
-          onClick={() =>
-            navigate(
-              "specialist-queue"
-            )
-          }
-        >
-          Consultant Queue
-        </button>
-
-
-        {profile?.role === "admin" && (
-          <button
-            className={
-              page === "administration"
-                ? "nav-active"
-                : ""
-            }
-            onClick={() =>
-              navigate(
-                "administration"
+        profile
+          ? h(
+              "div",
+              { className: "user-summary" },
+              h(
+                "div",
+                { className: "user-summary-name" },
+                profile.full_name ||
+                  profile.name ||
+                  session.user.email ||
+                  "User"
+              ),
+              h(
+                "div",
+                { className: "user-summary-role" },
+                profile.role || "Medical Officer"
               )
-            }
-          >
-            Administration
-          </button>
-        )}
+            )
+          : null,
 
-      </nav>
+        h(
+          "button",
+          {
+            type: "button",
+            className: "btn btn-secondary",
+            onClick: logout
+          },
+          "Logout"
+        )
+      )
+    ),
 
+    h(
+      "div",
+      { className: "app-body" },
 
-      <main className="main-content">
+      h(
+        "aside",
+        { className: "sidebar" },
 
-        {page === "dashboard" && (
-          <Dashboard
-            patients={patients}
-            onOpenPatient={openPatient}
-            onNavigate={navigate}
-          />
-        )}
+        h(
+          "nav",
+          { className: "sidebar-nav" },
 
+          h(
+            "button",
+            {
+              type: "button",
+              className:
+                "nav-item" +
+                (page === "dashboard" ? " active" : ""),
+              onClick: () => navigate("dashboard")
+            },
+            h("span", { className: "nav-icon" }, "⌂"),
+            h("span", null, "Dashboard")
+          ),
 
-        {page === "patients" && (
-          <Patients
-            patients={patients}
-            loading={loading}
-            onRefresh={loadPatients}
-            onOpenPatient={openPatient}
-          />
-        )}
+          h(
+            "button",
+            {
+              type: "button",
+              className:
+                "nav-item" +
+                (page === "patients" || page === "patient"
+                  ? " active"
+                  : ""),
+              onClick: () => navigate("patients")
+            },
+            h("span", { className: "nav-icon" }, "◉"),
+            h("span", null, "Patients")
+          ),
 
+          h(
+            "button",
+            {
+              type: "button",
+              className:
+                "nav-item" +
+                (page === "specialist" ? " active" : ""),
+              onClick: () => navigate("specialist")
+            },
+            h("span", { className: "nav-icon" }, "✚"),
+            h("span", null, "Specialist Queue")
+          ),
 
-        {page === "patient" &&
-          selectedPatientId && (
-            <Patient
-              patientId={
-                selectedPatientId
-              }
-              onBack={() =>
-                navigate("patients")
-              }
-            />
-          )}
+          profile?.role === "admin"
+            ? h(
+                "button",
+                {
+                  type: "button",
+                  className:
+                    "nav-item" +
+                    (page === "administration" ? " active" : ""),
+                  onClick: () => navigate("administration")
+                },
+                h("span", { className: "nav-icon" }, "⚙"),
+                h("span", null, "Administration")
+              )
+            : null
+        ),
 
+        h(
+          "div",
+          { className: "sidebar-footer" },
+          h("div", null, "PRISM"),
+          h("small", null, "Problem-oriented inpatient care")
+        )
+      ),
 
-        {page === "specialist-queue" && (
-          <SpecialistQueue />
-        )}
-
-
-        {page === "administration" &&
-          profile?.role === "admin" && (
-            <Administration
-              profile={profile}
-            />
-          )}
-
-      </main>
-
-    </div>
+      h(
+        "main",
+        { className: "main-content" },
+        content
+      )
+    )
   );
 }
 
-
-/* ========================================================
-   ROOT
-   ======================================================== */
-
-const rootElement =
-  document.getElementById("root");
+const rootElement = document.getElementById("root");
 
 if (!rootElement) {
-  throw new Error(
-    "PRISM root element not found."
-  );
+  throw new Error("PRISM root element was not found.");
 }
 
-createRoot(rootElement).render(
-  <App />
-);
+createRoot(rootElement).render(h(App));
