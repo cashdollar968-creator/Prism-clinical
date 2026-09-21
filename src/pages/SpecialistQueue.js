@@ -1,117 +1,262 @@
 import React, { useEffect, useState } from "https://esm.sh/react@18.3.1";
 import { db } from "../supabase.js";
-import { formatDate } from "../helpers.js";
 
-export default function SpecialistQueue({ profile }) {
+const h = React.createElement;
+
+function formatDate(value) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleString();
+}
+
+function priorityClass(priority) {
+  if (priority === "urgent") {
+    return "badge badge-danger";
+  }
+
+  if (priority === "high") {
+    return "badge badge-warning";
+  }
+
+  return "badge";
+}
+
+export default function SpecialistQueue({
+  profile,
+  onOpenPatient
+}) {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  async function loadRequests() {
+  const [selected, setSelected] = useState(null);
+
+  const [form, setForm] = useState({
+    clinical_assessment: "",
+    problem_assessment: "",
+    recommendations: "",
+    management_plan: "",
+    monitoring_instructions: "",
+    follow_up_timing: "",
+    escalation_instructions: "",
+    signature: ""
+  });
+
+  const [saving, setSaving] = useState(false);
+
+  async function loadQueue() {
     setLoading(true);
     setError("");
 
-    let query = db
-      .from("specialist_requests")
-      .select("*")
-      .order("requested_at", {
-        ascending: false
-      });
+    const {
+      data,
+      error: rpcError
+    } = await db.rpc(
+      "prism_get_specialist_queue"
+    );
 
-    if (profile?.role === "specialist") {
-      query = query.eq(
-        "specialist_id",
-        profile.id
-      );
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      setError(error.message);
+    if (rpcError) {
+      setError(rpcError.message);
       setRequests([]);
-      setLoading(false);
-      return;
+    } else {
+      setRequests(data || []);
     }
 
-    setRequests(data || []);
     setLoading(false);
   }
 
   useEffect(() => {
-    loadRequests();
+    loadQueue();
   }, [profile?.id, profile?.role]);
 
-  function priorityClass(priority) {
-    if (priority === "urgent") {
-      return "badge-unstable";
-    }
-
-    if (priority === "review_today") {
-      return "badge-deteriorating";
-    }
-
-    return "badge-improving";
+  function updateField(key, value) {
+    setForm(current => ({
+      ...current,
+      [key]: value
+    }));
   }
 
-  return React.createElement(
-    React.Fragment,
-    null,
+  function resetForm() {
+    setForm({
+      clinical_assessment: "",
+      problem_assessment: "",
+      recommendations: "",
+      management_plan: "",
+      monitoring_instructions: "",
+      follow_up_timing: "",
+      escalation_instructions: "",
+      signature: ""
+    });
+  }
 
-    React.createElement(
+  async function submitReview(event) {
+    event.preventDefault();
+
+    if (!selected) return;
+
+    setError("");
+
+    const hasCoreContent =
+      form.clinical_assessment.trim() ||
+      form.problem_assessment.trim() ||
+      form.recommendations.trim() ||
+      form.management_plan.trim();
+
+    if (!hasCoreContent) {
+      setError(
+        "Enter at least one substantive review field."
+      );
+      return;
+    }
+
+    setSaving(true);
+
+    const {
+      error: rpcError
+    } = await db.rpc(
+      "prism_submit_specialist_review",
+      {
+        p_request_id: selected.id,
+
+        p_clinical_assessment:
+          form.clinical_assessment || null,
+
+        p_problem_assessment:
+          form.problem_assessment || null,
+
+        p_recommendations:
+          form.recommendations || null,
+
+        p_management_plan:
+          form.management_plan || null,
+
+        p_monitoring_instructions:
+          form.monitoring_instructions || null,
+
+        p_follow_up_timing:
+          form.follow_up_timing || null,
+
+        p_escalation_instructions:
+          form.escalation_instructions || null,
+
+        p_signature:
+          form.signature || null,
+
+        p_entered_by: null,
+
+        p_entered_on_behalf_reason: null
+      }
+    );
+
+    setSaving(false);
+
+    if (rpcError) {
+      setError(rpcError.message);
+      return;
+    }
+
+    setSelected(null);
+    resetForm();
+
+    await loadQueue();
+  }
+
+  function reviewField(label, key) {
+    return h(
       "div",
-      { className: "row wrap" },
+      { className: "field" },
 
-      React.createElement(
+      h(
+        "label",
+        null,
+        label
+      ),
+
+      h("textarea", {
+        value: form[key],
+        onChange: event =>
+          updateField(
+            key,
+            event.target.value
+          )
+      })
+    );
+  }
+
+  return h(
+    "div",
+    { className: "page" },
+
+    h(
+      "div",
+      {
+        className: "row wrap",
+        style: {
+          justifyContent: "space-between",
+          marginBottom: "16px"
+        }
+      },
+
+      h(
         "div",
         null,
 
-        React.createElement(
+        h(
           "div",
           { className: "page-title" },
           "Specialist Queue"
         ),
 
-        React.createElement(
+        h(
           "div",
           { className: "page-subtitle" },
-          profile?.role === "specialist"
-            ? "Patients requiring your specialist review"
-            : "Specialist consultation requests"
+          "Requests accessible to the current specialist workflow."
         )
       ),
 
-      React.createElement(
+      h(
         "button",
         {
           className: "btn btn-secondary",
-          onClick: loadRequests,
+          onClick: loadQueue,
           disabled: loading
         },
-        loading ? "Refreshing..." : "Refresh"
+        loading
+          ? "Refreshing..."
+          : "Refresh"
       )
     ),
 
     error
-      ? React.createElement(
+      ? h(
           "div",
-          { className: "error" },
+          {
+            className: "alert alert-error",
+            style: { marginBottom: "16px" }
+          },
           error
         )
       : null,
 
-    React.createElement(
+    h(
       "div",
       { className: "card" },
 
-      React.createElement(
+      h(
         "div",
         { className: "section-title" },
-        "Requests"
+        `Open Requests (${requests.length})`
       ),
 
       loading
-        ? React.createElement(
+
+        ? h(
             "div",
             { className: "loading" },
             "Loading specialist queue..."
@@ -119,86 +264,55 @@ export default function SpecialistQueue({ profile }) {
 
         : requests.length === 0
 
-          ? React.createElement(
+          ? h(
               "div",
-              { className: "empty" },
-              "No specialist requests found."
+              { className: "muted" },
+              "No open specialist requests."
             )
 
-          : React.createElement(
+          : h(
               "div",
               { className: "table-wrap" },
 
-              React.createElement(
+              h(
                 "table",
                 null,
 
-                React.createElement(
+                h(
                   "thead",
                   null,
 
-                  React.createElement(
+                  h(
                     "tr",
                     null,
 
-                    React.createElement(
-                      "th",
-                      null,
-                      "Priority"
-                    ),
-
-                    React.createElement(
-                      "th",
-                      null,
-                      "Status"
-                    ),
-
-                    React.createElement(
-                      "th",
-                      null,
-                      "Patient / Admission"
-                    ),
-
-                    React.createElement(
-                      "th",
-                      null,
-                      "Reason"
-                    ),
-
-                    React.createElement(
-                      "th",
-                      null,
-                      "Clinical Question"
-                    ),
-
-                    React.createElement(
-                      "th",
-                      null,
-                      "Requested"
-                    )
+                    h("th", null, "Priority"),
+                    h("th", null, "Status"),
+                    h("th", null, "Patient"),
+                    h("th", null, "Reason"),
+                    h("th", null, "Clinical Question"),
+                    h("th", null, "Requested"),
+                    h("th", null, "Action")
                   )
                 ),
 
-                React.createElement(
+                h(
                   "tbody",
                   null,
 
-                  requests.map((request) =>
-                    React.createElement(
+                  requests.map(request =>
+                    h(
                       "tr",
-                      {
-                        key: request.id
-                      },
+                      { key: request.id },
 
-                      React.createElement(
+                      h(
                         "td",
                         null,
 
-                        React.createElement(
+                        h(
                           "span",
                           {
                             className:
-                              "badge " +
                               priorityClass(
                                 request.priority
                               )
@@ -208,49 +322,72 @@ export default function SpecialistQueue({ profile }) {
                         )
                       ),
 
-                      React.createElement(
+                      h(
                         "td",
                         null,
                         request.status || "—"
                       ),
 
-                      React.createElement(
+                      h(
                         "td",
                         null,
 
-                        React.createElement(
+                        h(
                           "div",
                           null,
-                          request.patient_id || "—"
+                          request.patient_code ||
+                            request.patient_id ||
+                            "—"
                         ),
 
-                        React.createElement(
+                        h(
                           "div",
                           {
                             className:
                               "small muted"
                           },
-                          request.admission_id || "—"
+                          request.patient_name ||
+                            "—"
                         )
                       ),
 
-                      React.createElement(
+                      h(
                         "td",
                         null,
                         request.reason || "—"
                       ),
 
-                      React.createElement(
+                      h(
                         "td",
                         null,
-                        request.clinical_question || "—"
+                        request.clinical_question ||
+                          "—"
                       ),
 
-                      React.createElement(
+                      h(
                         "td",
                         null,
                         formatDate(
                           request.requested_at
+                        )
+                      ),
+
+                      h(
+                        "td",
+                        null,
+
+                        h(
+                          "button",
+                          {
+                            className:
+                              "btn btn-primary",
+
+                            onClick: () =>
+                              setSelected(
+                                request
+                              )
+                          },
+                          "Review"
                         )
                       )
                     )
@@ -258,6 +395,167 @@ export default function SpecialistQueue({ profile }) {
                 )
               )
             )
-    )
-  );
+    ),
+
+    selected
+
+      ? h(
+          "div",
+          { className: "modal-backdrop" },
+
+          h(
+            "div",
+            {
+              className: "modal",
+              role: "dialog",
+              "aria-modal": "true"
+            },
+
+            h(
+              "div",
+              {
+                className: "row wrap",
+                style: {
+                  justifyContent:
+                    "space-between"
                 }
+              },
+
+              h(
+                "div",
+                null,
+
+                h(
+                  "h2",
+                  null,
+                  "Specialist Review"
+                ),
+
+                h(
+                  "div",
+                  {
+                    className:
+                      "small muted"
+                  },
+
+                  `${
+                    selected.patient_name ||
+                    selected.patient_code ||
+                    "Patient"
+                  } • ${
+                    selected.clinical_question ||
+                    "Consultation"
+                  }`
+                )
+              ),
+
+              h(
+                "button",
+                {
+                  className:
+                    "btn btn-secondary",
+
+                  onClick: () =>
+                    setSelected(null),
+
+                  disabled: saving
+                },
+                "Close"
+              )
+            ),
+
+            h(
+              "form",
+              {
+                onSubmit: submitReview,
+                style: {
+                  marginTop: "18px"
+                }
+              },
+
+              reviewField(
+                "Clinical Assessment",
+                "clinical_assessment"
+              ),
+
+              reviewField(
+                "Problem Assessment",
+                "problem_assessment"
+              ),
+
+              reviewField(
+                "Recommendations",
+                "recommendations"
+              ),
+
+              reviewField(
+                "Management Plan",
+                "management_plan"
+              ),
+
+              reviewField(
+                "Monitoring Instructions",
+                "monitoring_instructions"
+              ),
+
+              reviewField(
+                "Follow-up Timing",
+                "follow_up_timing"
+              ),
+
+              reviewField(
+                "Escalation Instructions",
+                "escalation_instructions"
+              ),
+
+              reviewField(
+                "Signature",
+                "signature"
+              ),
+
+              h(
+                "div",
+                {
+                  className:
+                    "form-actions"
+                },
+
+                h(
+                  "button",
+                  {
+                    className:
+                      "btn btn-secondary",
+
+                    type: "button",
+
+                    onClick: () =>
+                      setSelected(null),
+
+                    disabled: saving
+                  },
+                  "Cancel"
+                ),
+
+                h(
+                  "button",
+                  {
+                    className:
+                      "btn btn-primary",
+
+                    type: "submit",
+
+                    disabled: saving
+                  },
+
+                  saving
+                    ? "Submitting..."
+                    : "Submit Review"
+                )
+              )
+            )
+          )
+        )
+
+      : null
+  );
+               }
