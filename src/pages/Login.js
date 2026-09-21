@@ -2,57 +2,129 @@ import React, { useState } from "https://esm.sh/react@18.3.1";
 import { db } from "../supabase.js";
 
 export default function Login({ onLogin }) {
-  const [email, setEmail] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function submit(e) {
-    e.preventDefault();
+  async function submit(event) {
+    event.preventDefault();
+
     setError("");
 
-    if (!email || !password) {
-      setError("Please enter both email and password.");
+    const normalizedLoginId = loginId.trim();
+
+    if (!normalizedLoginId || !password) {
+      setError("Please enter your PRISM Login ID and password.");
       return;
     }
 
     setLoading(true);
 
-    const { data, error } = await db.auth.signInWithPassword({
-      email: email.trim(),
-      password
-    });
+    try {
+      /*
+       * Resolve the PRISM Login ID to the internal
+       * authentication email.
+       *
+       * This function is intentionally exposed through
+       * the public invoker wrapper so it can be called
+       * before authentication.
+       */
 
-    setLoading(false);
+      const {
+        data: resolvedEmail,
+        error: resolveError
+      } = await db.rpc(
+        "resolve_login_email",
+        {
+          p_login_id: normalizedLoginId
+        }
+      );
 
-    if (error) {
-      setError(error.message || "Unable to sign in.");
-      return;
+      if (resolveError) {
+        throw new Error(
+          resolveError.message ||
+          "Unable to resolve PRISM Login ID."
+        );
+      }
+
+      if (!resolvedEmail) {
+        throw new Error(
+          "Invalid PRISM Login ID or password."
+        );
+      }
+
+      /*
+       * Authenticate through Supabase Auth
+       * using the internally resolved email.
+       */
+
+      const {
+        data,
+        error: signInError
+      } = await db.auth.signInWithPassword({
+        email: resolvedEmail,
+        password
+      });
+
+      if (signInError) {
+        throw new Error(
+          "Invalid PRISM Login ID or password."
+        );
+      }
+
+      if (!data?.user) {
+        throw new Error(
+          "Authentication succeeded but no user was returned."
+        );
+      }
+
+      onLogin(data.user);
+
+    } catch (err) {
+      console.error(
+        "PRISM login error:",
+        err
+      );
+
+      setError(
+        err?.message ||
+        "Unable to sign in."
+      );
+
+    } finally {
+      setLoading(false);
     }
-
-    if (!data?.user) {
-      setError("Authentication succeeded but no user was returned.");
-      return;
-    }
-
-    onLogin(data.user);
   }
 
   return React.createElement(
     "div",
-    { className: "login-page" },
+    {
+      className: "login-page"
+    },
 
     React.createElement(
       "div",
-      { className: "login-card" },
+      {
+        className: "login-card"
+      },
+
+      /*
+       * PRISM BRAND
+       */
 
       React.createElement(
         "div",
-        { className: "brand" },
+        {
+          className: "brand"
+        },
 
         React.createElement(
           "div",
-          { className: "brand-mark" },
+          {
+            className: "brand-mark"
+          },
           "P"
         ),
 
@@ -62,58 +134,108 @@ export default function Login({ onLogin }) {
 
           React.createElement(
             "div",
-            { className: "brand-title" },
+            {
+              className: "brand-title"
+            },
             "PRISM"
           ),
 
           React.createElement(
             "div",
-            { className: "brand-subtitle" },
+            {
+              className: "brand-subtitle"
+            },
             "Problem-oriented Inpatient Review & Structured Monitoring"
           )
         )
       ),
 
+      /*
+       * TITLE
+       */
+
       React.createElement(
         "h2",
-        { className: "login-title" },
+        {
+          className: "login-title"
+        },
         "Sign in"
       ),
+
+      /*
+       * ERROR
+       */
 
       error
         ? React.createElement(
             "div",
-            { className: "error" },
+            {
+              className: "error"
+            },
             error
           )
         : null,
 
+      /*
+       * LOGIN FORM
+       */
+
       React.createElement(
         "form",
-        { onSubmit: submit },
+        {
+          onSubmit: submit
+        },
+
+        /*
+         * PRISM LOGIN ID
+         */
 
         React.createElement(
           "div",
-          { className: "field" },
+          {
+            className: "field"
+          },
 
           React.createElement(
             "label",
             null,
-            "Email"
+            "PRISM Login ID"
           ),
 
-          React.createElement("input", {
-            type: "email",
-            value: email,
-            autoComplete: "username",
-            onChange: (e) => setEmail(e.target.value),
-            placeholder: "name@example.com"
-          })
+          React.createElement(
+            "input",
+            {
+              type: "text",
+
+              value: loginId,
+
+              autoComplete: "username",
+
+              autoCapitalize: "none",
+
+              autoCorrect: "off",
+
+              spellCheck: false,
+
+              onChange: (event) =>
+                setLoginId(
+                  event.target.value
+                ),
+
+              placeholder: "e.g. ADMIN"
+            }
+          )
         ),
+
+        /*
+         * PASSWORD
+         */
 
         React.createElement(
           "div",
-          { className: "field" },
+          {
+            className: "field"
+          },
 
           React.createElement(
             "label",
@@ -121,26 +243,50 @@ export default function Login({ onLogin }) {
             "Password"
           ),
 
-          React.createElement("input", {
-            type: "password",
-            value: password,
-            autoComplete: "current-password",
-            onChange: (e) => setPassword(e.target.value),
-            placeholder: "Password"
-          })
+          React.createElement(
+            "input",
+            {
+              type: "password",
+
+              value: password,
+
+              autoComplete:
+                "current-password",
+
+              onChange: (event) =>
+                setPassword(
+                  event.target.value
+                ),
+
+              placeholder: "Password"
+            }
+          )
         ),
+
+        /*
+         * SUBMIT
+         */
 
         React.createElement(
           "button",
           {
-            className: "btn btn-primary",
+            className:
+              "btn btn-primary",
+
             type: "submit",
+
             disabled: loading,
-            style: { width: "100%" }
+
+            style: {
+              width: "100%"
+            }
           },
-          loading ? "Signing in..." : "Sign in"
+
+          loading
+            ? "Signing in..."
+            : "Sign in"
         )
       )
     )
   );
-}
+      }
