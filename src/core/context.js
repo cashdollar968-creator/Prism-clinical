@@ -1,27 +1,4 @@
 import { loadTenantContext } from "./tenantContext.js";
-import {
-  getOrganization,
-  getOrganizationId,
-  getOrganizationName,
-} from "./organizationContext.js";
-import {
-  getCountry,
-  getCountryId,
-  getCountryCode,
-  getCountryName,
-} from "./countryContext.js";
-import {
-  getHospital,
-  getHospitalId,
-  getHospitalName,
-  getHospitalCode,
-} from "./hospitalContext.js";
-import {
-  getCampus,
-  getCampusId,
-  getCampusName,
-  getCampusCode,
-} from "./campusContext.js";
 
 export async function loadPRISMContext(
   departmentId = null,
@@ -32,50 +9,78 @@ export async function loadPRISMContext(
     unitId
   );
 
+  const tenant = context?.tenant || null;
+  const hospital = context?.hospital || null;
+  const department = context?.department || null;
+  const unit = context?.unit || null;
+
   return {
     ...context,
 
-    organization: getOrganization(context),
-    country: getCountry(context),
-    hospital: getHospital(context),
-    campus: getCampus(context),
-
     identifiers: {
-      organizationId:
-        getOrganizationId(context),
-
-      countryId:
-        getCountryId(context),
-
-      countryCode:
-        getCountryCode(context),
-
-      hospitalId:
-        getHospitalId(context),
-
-      hospitalCode:
-        getHospitalCode(context),
-
-      campusId:
-        getCampusId(context),
+      tenantId: tenant?.id || null,
+      hospitalId: hospital?.id || null,
+      departmentId: department?.id || null,
+      unitId: unit?.id || null,
     },
 
     labels: {
-      organization:
-        getOrganizationName(context),
+      tenant: tenant?.name || null,
+      hospital: hospital?.name || null,
+      department: department?.name || null,
+      unit: unit?.name || null,
+    },
 
-      country:
-        getCountryName(context),
-
-      hospital:
-        getHospitalName(context),
-
-      campus:
-        getCampusName(context),
+    hierarchy: {
+      tenant,
+      hospital,
+      department,
+      unit,
     },
   };
 }
 
 export function getPRISMContext(context) {
   return context || null;
-      }
+}
+
+export function getContextHierarchy(context) {
+  return {
+    tenant: context?.tenant || null,
+    hospital: context?.hospital || null,
+    department: context?.department || null,
+    unit: context?.unit || null,
+  };
+}
+
+export function getContextIdentifiers(context) {
+  return {
+    tenantId:
+      context?.identifiers?.tenantId || null,
+
+    hospitalId:
+      context?.identifiers?.hospitalId || null,
+
+    departmentId:
+      context?.identifiers?.departmentId || null,
+
+    unitId:
+      context?.identifiers?.unitId || null,
+  };
+}
+
+export function getContextLabels(context) {
+  return {
+    tenant:
+      context?.labels?.tenant || null,
+
+    hospital:
+      context?.labels?.hospital || null,
+
+    department:
+      context?.labels?.department || null,
+
+    unit:
+      context?.labels?.unit || null,
+  };
+}
