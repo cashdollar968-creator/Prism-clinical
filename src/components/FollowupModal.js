@@ -1,306 +1,338 @@
-import React, { useState } from "https://esm.sh/react@18.3.1";
+import React, { useEffect, useState } from "https://esm.sh/react@18.3.1";
 import { db } from "../supabase.js";
 
-export default function FollowupModal({
-  admission,
-  user,
-  onClose,
-  onSaved
-}) {
+const h = React.createElement;
+
+export default function FollowupModal({ admission, onClose, onSaved }) {
+  const [definition, setDefinition] = useState(null);
   const [form, setForm] = useState({
-    clinical_changes: "",
+    clinical_change: "",
     new_results: "",
     problems_assessment: "",
     clinical_stability: "stable",
-    response: "",
+    response_to_treatment: "",
     management_changes: "",
     remaining_inpatient_needs: "",
-    why_still_admitted: "",
-    recommendation_next_steps: "",
-    escalation_red_flags: ""
+    recommendation_next_steps: ""
   });
 
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  function updateField(field, value) {
-    setForm((current) => ({
+  useEffect(() => {
+    let active = true;
+
+    async function loadWorkflow() {
+      const { data, error: rpcError } = await db.rpc(
+        "prism_get_workflow_definition",
+        {
+          p_workflow_code: "prism_daily_followup"
+        }
+      );
+
+      if (!active) return;
+
+      if (rpcError) {
+        setError(rpcError.message);
+      } else {
+        setDefinition(data);
+      }
+
+      setLoading(false);
+    }
+
+    loadWorkflow();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function updateField(key, value) {
+    setForm(current => ({
       ...current,
-      [field]: value
+      [key]: value
     }));
   }
 
-  async function submit(e) {
-    e.preventDefault();
+  async function submit(event) {
+    event.preventDefault();
 
     setError("");
-
-    if (!form.clinical_stability) {
-      setError("Clinical stability is required.");
-      return;
-    }
 
     if (!admission?.id) {
       setError("No admission selected.");
       return;
     }
 
-    if (!user?.id) {
-      setError("No authenticated user found.");
+    if (!form.problems_assessment.trim()) {
+      setError("Problems / Assessment is required.");
+      return;
+    }
+
+    if (!form.clinical_stability) {
+      setError("Clinical Stability is required.");
+      return;
+    }
+
+    if (!form.remaining_inpatient_needs.trim()) {
+      setError("Remaining Inpatient Needs is required.");
+      return;
+    }
+
+    if (!form.recommendation_next_steps.trim()) {
+      setError("Recommendation / Next Steps is required.");
       return;
     }
 
     setSaving(true);
 
-    const { error: insertError } = await db
-      .from("daily_updates")
-      .insert({
-        admission_id: admission.id,
-        author_id: user.id,
-        occurred_at: new Date().toISOString(),
-        clinical_changes: form.clinical_changes,
-        new_results: form.new_results,
-        problems_assessment: form.problems_assessment,
-        clinical_stability: form.clinical_stability,
-        response: form.response,
-        management_changes: form.management_changes,
-        remaining_inpatient_needs:
-          form.remaining_inpatient_needs,
-        why_still_admitted:
-          form.why_still_admitted,
-        recommendation_next_steps:
-          form.recommendation_next_steps,
-        escalation_red_flags:
-          form.escalation_red_flags
-      });
+    const { error: rpcError } = await db.rpc(
+      "prism_submit_workflow_response",
+      {
+        p_admission_id: admission.id,
+        p_workflow_code: "prism_daily_followup",
+        p_response_data: form,
+        p_session_id: null,
+        p_amendment_of: null
+      }
+    );
 
     setSaving(false);
 
-    if (insertError) {
-      setError(insertError.message);
+    if (rpcError) {
+      setError(rpcError.message);
       return;
     }
 
     if (onSaved) {
-      onSaved();
+      await onSaved();
     }
   }
 
-  function field(
-    label,
-    key,
-    placeholder = ""
-  ) {
-    return React.createElement(
+  function textarea(label, key, placeholder, required = false) {
+    return h(
       "div",
       { className: "field" },
 
-      React.createElement(
+      h(
         "label",
         null,
-        label
+        label,
+        required ? " *" : ""
       ),
 
-      React.createElement("textarea", {
-        value: form[key],
+      h("textarea", {
+        value: form[key] || "",
         placeholder,
-        onChange: (e) =>
-          updateField(key, e.target.value)
+        required,
+        onChange: event =>
+          updateField(key, event.target.value)
       })
     );
   }
 
-  return React.createElement(
+  return h(
     "div",
     { className: "modal-backdrop" },
 
-    React.createElement(
+    h(
       "div",
-      { className: "modal" },
+      {
+        className: "modal",
+        role: "dialog",
+        "aria-modal": "true"
+      },
 
-      React.createElement(
+      h(
         "div",
-        { className: "row" },
+        {
+          className: "row wrap",
+          style: {
+            justifyContent: "space-between"
+          }
+        },
 
-        React.createElement(
+        h(
           "div",
           null,
 
-          React.createElement(
+          h(
             "h2",
             null,
             "Daily Follow-up"
           ),
 
-          React.createElement(
+          h(
             "div",
             { className: "small muted" },
-            "Append a new clinical review to the patient timeline."
+            "PRISM structured clinical review — append-only clinical record."
           )
         ),
 
-        React.createElement(
+        h(
           "button",
           {
             className: "btn btn-secondary",
             type: "button",
-            onClick: onClose
+            onClick: onClose,
+            disabled: saving
           },
           "Close"
         )
       ),
 
       error
-        ? React.createElement(
+        ? h(
             "div",
             {
-              className: "error",
-              style: {
-                marginTop: "15px"
-              }
+              className: "alert alert-error",
+              style: { marginTop: "14px" }
             },
             error
           )
         : null,
 
-      React.createElement(
-        "form",
-        {
-          onSubmit: submit,
-          style: {
-            marginTop: "18px"
-          }
-        },
+      loading
 
-        field(
-          "Clinical Changes / Events",
-          "clinical_changes",
-          "What changed since the previous review?"
-        ),
-
-        field(
-          "New Important Results",
-          "new_results",
-          "Important new laboratory, ECG, echo or imaging results."
-        ),
-
-        field(
-          "Problems / Assessment",
-          "problems_assessment",
-          "Current assessment of the active problems."
-        ),
-
-        React.createElement(
-          "div",
-          { className: "field" },
-
-          React.createElement(
-            "label",
-            null,
-            "Clinical Stability"
-          ),
-
-          React.createElement(
-            "select",
+        ? h(
+            "div",
             {
-              value: form.clinical_stability,
-              onChange: (e) =>
-                updateField(
-                  "clinical_stability",
-                  e.target.value
-                )
+              className: "loading",
+              style: { marginTop: "18px" }
+            },
+            "Loading workflow definition..."
+          )
+
+        : h(
+            "form",
+            {
+              onSubmit: submit,
+              style: { marginTop: "18px" }
             },
 
-            React.createElement(
-              "option",
-              { value: "stable" },
-              "Stable"
+            textarea(
+              "Clinical Change / Events",
+              "clinical_change",
+              "What changed since the previous review?"
             ),
 
-            React.createElement(
-              "option",
-              { value: "improving" },
-              "Improving"
+            textarea(
+              "New Results",
+              "new_results",
+              "Important new laboratory, ECG, echo, imaging or other results."
             ),
 
-            React.createElement(
-              "option",
-              { value: "deteriorating" },
-              "Deteriorating"
+            textarea(
+              "Problems / Assessment",
+              "problems_assessment",
+              "Current assessment and clinical reasoning for active problems.",
+              true
             ),
 
-            React.createElement(
-              "option",
-              { value: "unstable" },
-              "Unstable"
+            h(
+              "div",
+              { className: "field" },
+
+              h(
+                "label",
+                null,
+                "Clinical Stability *"
+              ),
+
+              h(
+                "select",
+                {
+                  value: form.clinical_stability,
+                  onChange: event =>
+                    updateField(
+                      "clinical_stability",
+                      event.target.value
+                    ),
+                  required: true
+                },
+
+                h(
+                  "option",
+                  { value: "stable" },
+                  "Stable"
+                ),
+
+                h(
+                  "option",
+                  { value: "improving" },
+                  "Improving"
+                ),
+
+                h(
+                  "option",
+                  { value: "deteriorating" },
+                  "Deteriorating"
+                ),
+
+                h(
+                  "option",
+                  { value: "unstable" },
+                  "Unstable"
+                )
+              )
+            ),
+
+            textarea(
+              "Response to Treatment",
+              "response_to_treatment",
+              "Response to treatment/interventions."
+            ),
+
+            textarea(
+              "Management Changes",
+              "management_changes",
+              "What changed in management, medications, monitoring or investigations?"
+            ),
+
+            textarea(
+              "Remaining Inpatient Needs",
+              "remaining_inpatient_needs",
+              "What still requires inpatient care, and why?",
+              true
+            ),
+
+            textarea(
+              "Recommendation / Next Steps",
+              "recommendation_next_steps",
+              "What should happen next? Include monitoring and escalation instructions where relevant.",
+              true
+            ),
+
+            h(
+              "div",
+              { className: "form-actions" },
+
+              h(
+                "button",
+                {
+                  className: "btn btn-secondary",
+                  type: "button",
+                  onClick: onClose,
+                  disabled: saving
+                },
+                "Cancel"
+              ),
+
+              h(
+                "button",
+                {
+                  className: "btn btn-primary",
+                  type: "submit",
+                  disabled: saving
+                },
+                saving
+                  ? "Saving..."
+                  : "Submit Follow-up"
+              )
             )
           )
-        ),
-
-        field(
-          "Response",
-          "response",
-          "Response to treatment or interventions."
-        ),
-
-        field(
-          "Management Changes",
-          "management_changes",
-          "What was changed in management?"
-        ),
-
-        field(
-          "Remaining Inpatient Needs",
-          "remaining_inpatient_needs",
-          "What still requires inpatient care?"
-        ),
-
-        field(
-          "Why Still Admitted",
-          "why_still_admitted",
-          "Why does the patient still need admission?"
-        ),
-
-        field(
-          "Recommendation / Next Steps",
-          "recommendation_next_steps",
-          "What should happen next?"
-        ),
-
-        field(
-          "Escalation / Red Flags",
-          "escalation_red_flags",
-          "What should trigger escalation?"
-        ),
-
-        React.createElement(
-          "div",
-          { className: "form-actions" },
-
-          React.createElement(
-            "button",
-            {
-              className: "btn btn-secondary",
-              type: "button",
-              onClick: onClose,
-              disabled: saving
-            },
-            "Cancel"
-          ),
-
-          React.createElement(
-            "button",
-            {
-              className: "btn btn-primary",
-              type: "submit",
-              disabled: saving
-            },
-            saving
-              ? "Saving..."
-              : "Save Follow-up"
-          )
-        )
-      )
     )
   );
-      }
+                }
