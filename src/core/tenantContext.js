@@ -3,11 +3,23 @@ import {
 } from "./clinicalContext.js";
 
 /**
- * Load the complete tenant / organization /
- * hospital clinical context for the current user.
+ * PRISM Tenant / Hospital / Department / Unit Context
  *
- * The backend remains the source of truth.
+ * Current canonical hierarchy:
+ *
+ * Tenant
+ *   ↓
+ * Hospital
+ *   ↓
+ * Department
+ *   ↓
+ * Unit
+ *
+ * Organization and Campus are intentionally not
+ * assumed because they are not first-class backend
+ * entities yet.
  */
+
 export async function loadTenantContext(
   departmentId = null,
   unitId = null
@@ -18,73 +30,96 @@ export async function loadTenantContext(
       unitId
     );
 
+  const backendContext =
+    authorizationContext?.context || {};
+
   return {
     authorization: authorizationContext,
 
     tenant:
-      authorizationContext?.context
-        ?.tenant || null,
-
-    organization:
-      authorizationContext?.context
-        ?.organization || null,
+      backendContext.tenant || null,
 
     hospital:
-      authorizationContext?.context
-        ?.hospital || null,
-
-    campus:
-      authorizationContext?.context
-        ?.campus || null,
+      backendContext.hospital || null,
 
     department:
-      authorizationContext?.context
-        ?.department || null,
+      backendContext.department || null,
 
     unit:
-      authorizationContext?.context
-        ?.unit || null,
+      backendContext.unit || null,
+
+    organization: null,
+    country: null,
+    campus: null,
   };
 }
 
-/**
- * Return the currently selected tenant.
- */
 export function getCurrentTenant(context) {
   return context?.tenant || null;
 }
 
-/**
- * Return the currently selected organization.
- */
-export function getCurrentOrganization(context) {
-  return context?.organization || null;
-}
-
-/**
- * Return the currently selected hospital.
- */
 export function getCurrentHospital(context) {
   return context?.hospital || null;
 }
 
-/**
- * Return the currently selected campus.
- */
-export function getCurrentCampus(context) {
-  return context?.campus || null;
-}
-
-/**
- * Return the currently selected department.
- */
 export function getCurrentDepartment(context) {
   return context?.department || null;
 }
 
-/**
- * Return the currently selected unit.
- */
 export function getCurrentUnit(context) {
   return context?.unit || null;
+}
+
+export function getCurrentOrganization(context) {
+  return context?.organization || null;
+}
+
+export function getCurrentCountry(context) {
+  return context?.country || null;
+}
+
+export function getCurrentCampus(context) {
+  return context?.campus || null;
+}
+
+export function getClinicalHierarchy(context) {
+  return {
+    tenant:
+      getCurrentTenant(context),
+
+    hospital:
+      getCurrentHospital(context),
+
+    department:
+      getCurrentDepartment(context),
+
+    unit:
+      getCurrentUnit(context),
+  };
+}
+
+export function getClinicalContextIds(context) {
+  return {
+    tenantId:
+      getCurrentTenant(context)?.id || null,
+
+    hospitalId:
+      getCurrentHospital(context)?.id || null,
+
+    departmentId:
+      getCurrentDepartment(context)?.id || null,
+
+    unitId:
+      getCurrentUnit(context)?.id || null,
+  };
+}
+
+export function getClinicalLocationLabel(context) {
+  return [
+    getCurrentHospital(context)?.name,
+    getCurrentDepartment(context)?.name,
+    getCurrentUnit(context)?.name,
+  ]
+    .filter(Boolean)
+    .join(" → ");
 }
