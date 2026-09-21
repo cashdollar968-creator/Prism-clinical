@@ -2,7 +2,7 @@ import React, { useState } from "https://esm.sh/react@18.3.1";
 import { db } from "../supabase.js";
 
 export default function Login({ onLogin }) {
-  const [email, setEmail] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -11,31 +11,62 @@ export default function Login({ onLogin }) {
     e.preventDefault();
     setError("");
 
-    if (!email || !password) {
-      setError("Please enter both email and password.");
+    const cleanLoginId = loginId.trim();
+
+    if (!cleanLoginId || !password) {
+      setError("Please enter your PRISM Login ID and password.");
       return;
     }
 
     setLoading(true);
 
-    const { data, error } = await db.auth.signInWithPassword({
-      email: email.trim(),
-      password
-    });
+    try {
+      // Resolve PRISM Login ID to the internal Supabase email.
+      const { data: resolvedEmail, error: resolveError } =
+        await db.rpc("resolve_login_email", {
+          p_login_id: cleanLoginId,
+        });
 
-    setLoading(false);
+      if (resolveError) {
+        console.error("Login ID resolution error:", resolveError);
+        setError("Unable to resolve Login ID.");
+        setLoading(false);
+        return;
+      }
 
-    if (error) {
-      setError(error.message || "Unable to sign in.");
-      return;
+      if (!resolvedEmail) {
+        setError("Invalid Login ID or inactive account.");
+        setLoading(false);
+        return;
+      }
+
+      // Supabase Auth still authenticates using its internal email,
+      // while the user only needs to know their PRISM Login ID.
+      const { data, error: signInError } =
+        await db.auth.signInWithPassword({
+          email: resolvedEmail,
+          password,
+        });
+
+      if (signInError) {
+        setError("Invalid Login ID or password.");
+        setLoading(false);
+        return;
+      }
+
+      if (!data?.user) {
+        setError("Authentication succeeded but no user was returned.");
+        setLoading(false);
+        return;
+      }
+
+      setLoading(false);
+      onLogin(data.user);
+    } catch (err) {
+      console.error("Login error:", err);
+      setLoading(false);
+      setError("Unable to sign in. Please try again.");
     }
-
-    if (!data?.user) {
-      setError("Authentication succeeded but no user was returned.");
-      return;
-    }
-
-    onLogin(data.user);
   }
 
   return React.createElement(
@@ -99,15 +130,17 @@ export default function Login({ onLogin }) {
           React.createElement(
             "label",
             null,
-            "Email"
+            "PRISM Login ID"
           ),
 
           React.createElement("input", {
-            type: "email",
-            value: email,
+            type: "text",
+            value: loginId,
             autoComplete: "username",
-            onChange: (e) => setEmail(e.target.value),
-            placeholder: "name@example.com"
+            autoCapitalize: "none",
+            spellCheck: false,
+            onChange: (e) => setLoginId(e.target.value),
+            placeholder: "Enter your Login ID"
           })
         ),
 
@@ -143,4 +176,4 @@ export default function Login({ onLogin }) {
       )
     )
   );
-}
+            }
