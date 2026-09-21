@@ -1,4 +1,5 @@
 import React, {
+  useCallback,
   useEffect,
   useMemo,
   useState
@@ -7,8 +8,14 @@ import React, {
 import { db } from "../supabase.js";
 import FollowupModal from "../components/FollowupModal.js";
 
+const h = React.createElement;
+
 function text(value) {
-  if (value === null || value === undefined || value === "") {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
     return "—";
   }
 
@@ -23,50 +30,36 @@ function formatDate(value) {
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return value;
+    return String(value);
   }
 
   return date.toLocaleString();
 }
 
-function formatDateOnly(value) {
-  if (!value) {
-    return "—";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleDateString();
-}
-
-function statusClass(status) {
-  const value = String(status || "").toLowerCase();
+function statusClass(value) {
+  const v = String(value || "").toLowerCase();
 
   if (
-    value.includes("deteriorat") ||
-    value.includes("unstable") ||
-    value.includes("urgent") ||
-    value.includes("critical")
+    v.includes("deteriorat") ||
+    v.includes("unstable") ||
+    v.includes("urgent") ||
+    v.includes("critical")
   ) {
     return "badge badge-danger";
   }
 
   if (
-    value.includes("improv") ||
-    value.includes("stable") ||
-    value.includes("resolved") ||
-    value.includes("completed")
+    v.includes("stable") ||
+    v.includes("improv") ||
+    v.includes("completed") ||
+    v.includes("resolved")
   ) {
     return "badge badge-success";
   }
 
   if (
-    value.includes("pending") ||
-    value.includes("review")
+    v.includes("pending") ||
+    v.includes("review")
   ) {
     return "badge badge-warning";
   }
@@ -74,55 +67,78 @@ function statusClass(status) {
   return "badge";
 }
 
-function Section({ title, children, action }) {
-  return React.createElement(
+function Section({
+  title,
+  children,
+  action = null
+}) {
+  return h(
     "section",
-    { className: "card", style: { marginBottom: "16px" } },
+    {
+      className: "card",
+      style: {
+        marginBottom: "16px"
+      }
+    },
 
-    React.createElement(
+    h(
       "div",
       {
         className: "row wrap",
         style: {
           justifyContent: "space-between",
+          alignItems: "center",
           marginBottom: "14px"
         }
       },
 
-      React.createElement(
+      h(
         "div",
-        { className: "section-title" },
+        {
+          className: "section-title"
+        },
         title
       ),
 
-      action || null
+      action
     ),
 
     children
   );
 }
 
-function Field({ label, value }) {
-  return React.createElement(
+function Field({
+  label,
+  value
+}) {
+  return h(
     "div",
-    { className: "detail-box" },
+    {
+      className: "detail-box"
+    },
 
-    React.createElement(
+    h(
       "div",
-      { className: "detail-label" },
+      {
+        className: "detail-label"
+      },
       label
     ),
 
-    React.createElement(
+    h(
       "div",
-      { className: "detail-value" },
+      {
+        className: "detail-value"
+      },
       text(value)
     )
   );
 }
 
-function EmptyState({ message }) {
-  return React.createElement(
+function EmptyState({
+  message
+}) {
+  return h(
     "div",
     {
       className: "muted",
@@ -131,6 +147,32 @@ function EmptyState({ message }) {
       }
     },
     message
+  );
+}
+
+function ErrorState({
+  message
+}) {
+  return h(
+    "div",
+    {
+      className: "card",
+      style: {
+        borderColor: "#b91c1c",
+        color: "#b91c1c"
+      }
+    },
+    message
+  );
+}
+
+function LoadingState() {
+  return h(
+    "div",
+    {
+      className: "card"
+    },
+    "Loading clinical workspace..."
   );
 }
 
@@ -146,1623 +188,1208 @@ export default function Patient({
   const [selectedAdmissionId, setSelectedAdmissionId] =
     useState(null);
 
-  const [problems, setProblems] = useState([]);
-  const [problemAssessments, setProblemAssessments] =
-    useState([]);
-
-  const [dailyUpdates, setDailyUpdates] =
-    useState([]);
-
-  const [investigations, setInvestigations] =
-    useState([]);
+  const [admission, setAdmission] = useState(null);
+  const [timeline, setTimeline] = useState([]);
 
   const [specialistRequests, setSpecialistRequests] =
     useState([]);
 
-  const [specialistReviews, setSpecialistReviews] =
-    useState([]);
-
-  const [profiles, setProfiles] = useState([]);
-  const [wards, setWards] = useState([]);
-  const [beds, setBeds] = useState([]);
-
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  const [showFollowup, setShowFollowup] =
+  const [timelineLoading, setTimelineLoading] =
     useState(false);
+
+  const [error, setError] = useState("");
 
   const [activeTab, setActiveTab] =
     useState("overview");
 
-  async function loadPatient() {
-    if (!patientId) {
-      setError("No patient selected.");
-      setLoading(false);
-      return;
-    }
+  const [showFollowup, setShowFollowup] =
+    useState(false);
 
-    setLoading(true);
-    setError("");
+  const [showSpecialistRequest, setShowSpecialistRequest] =
+    useState(false);
 
-    try {
-      const [
-        patientResult,
-        admissionsResult,
-        profilesResult,
-        wardsResult,
-        bedsResult
-      ] = await Promise.all([
-        db
-          .from("patients")
-          .select("*")
-          .eq("id", patientId)
-          .single(),
+  const [specialistId, setSpecialistId] =
+    useState("");
 
-        db
-          .from("admissions")
-          .select("*")
-          .eq("patient_id", patientId)
-          .order(
-            "admission_datetime",
-            { ascending: false }
-          ),
+  const [requestReason, setRequestReason] =
+    useState("");
 
-        db
-          .from("profiles")
-          .select(
-            "id, display_name, email, role, active"
-          )
-          .eq("active", true),
+  const [clinicalQuestion, setClinicalQuestion] =
+    useState("");
 
-        db
-          .from("wards")
-          .select(
-            "id, name, active, department_id"
-          ),
+  const [priority, setPriority] =
+    useState("routine");
 
-        db
-          .from("beds")
-          .select(
-            "id, name, active, ward_id"
-          )
-      ]);
+  const [requestSaving, setRequestSaving] =
+    useState(false);
 
-      if (patientResult.error) {
-        throw patientResult.error;
-      }
+  const [requestError, setRequestError] =
+    useState("");
 
-      if (admissionsResult.error) {
-        throw admissionsResult.error;
-      }
+  const [requestSuccess, setRequestSuccess] =
+    useState("");
 
-      if (profilesResult.error) {
-        throw profilesResult.error;
-      }
+  /*
+   * ========================================================
+   * LOAD PATIENT
+   * ========================================================
+   */
 
-      if (wardsResult.error) {
-        throw wardsResult.error;
-      }
-
-      if (bedsResult.error) {
-        throw bedsResult.error;
-      }
-
-      const admissionRows =
-        admissionsResult.data || [];
-
-      setPatient(patientResult.data);
-      setAdmissions(admissionRows);
-      setProfiles(profilesResult.data || []);
-      setWards(wardsResult.data || []);
-      setBeds(bedsResult.data || []);
-
-      const activeAdmission =
-        admissionRows.find(
-          (admission) =>
-            admission.status === "active"
-        );
-
-      const firstAdmission =
-        activeAdmission ||
-        admissionRows[0] ||
-        null;
-
-      setSelectedAdmissionId(
-        firstAdmission?.id || null
-      );
-
-      if (recordActivity) {
-        recordActivity(
-          "patient_view",
-          {
-            patient_id: patientId
-          }
-        );
-      }
-
-    } catch (loadError) {
-      setError(
-        loadError?.message ||
-        "Unable to load patient."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadAdmissionData(admissionId) {
-    if (!admissionId) {
-      setProblems([]);
-      setProblemAssessments([]);
-      setDailyUpdates([]);
-      setInvestigations([]);
-      setSpecialistRequests([]);
-      setSpecialistReviews([]);
-      return;
-    }
-
-    setError("");
-
-    try {
-      const [
-        problemsResult,
-        updatesResult,
-        investigationsResult,
-        requestsResult,
-        reviewsResult
-      ] = await Promise.all([
-        db
-          .from("problems")
-          .select("*")
-          .eq("admission_id", admissionId)
-          .order("problem_no"),
-
-        db
-          .from("daily_updates")
-          .select("*")
-          .eq("admission_id", admissionId)
-          .order(
-            "occurred_at",
-            { ascending: false }
-          ),
-
-        db
-          .from("investigations")
-          .select("*")
-          .eq("admission_id", admissionId)
-          .order(
-            "performed_at",
-            { ascending: false }
-          ),
-
-        db
-          .from("specialist_requests")
-          .select("*")
-          .eq("admission_id", admissionId)
-          .order(
-            "requested_at",
-            { ascending: false }
-          ),
-
-        db
-          .from("specialist_reviews")
-          .select("*")
-          .eq("admission_id", admissionId)
-          .order(
-            "reviewed_at",
-            { ascending: false }
-          )
-      ]);
-
-      if (problemsResult.error) {
-        throw problemsResult.error;
-      }
-
-      if (updatesResult.error) {
-        throw updatesResult.error;
-      }
-
-      if (investigationsResult.error) {
-        throw investigationsResult.error;
-      }
-
-      if (requestsResult.error) {
-        throw requestsResult.error;
-      }
-
-      if (reviewsResult.error) {
-        throw reviewsResult.error;
-      }
-
-      const problemRows =
-        problemsResult.data || [];
-
-      setProblems(problemRows);
-      setDailyUpdates(updatesResult.data || []);
-      setInvestigations(
-        investigationsResult.data || []
-      );
-      setSpecialistRequests(
-        requestsResult.data || []
-      );
-      setSpecialistReviews(
-        reviewsResult.data || []
-      );
-
-      if (problemRows.length === 0) {
-        setProblemAssessments([]);
+  const loadPatient = useCallback(
+    async () => {
+      if (!patientId) {
+        setError("No patient selected.");
+        setLoading(false);
         return;
       }
 
-      const problemIds =
-        problemRows.map(
-          (problem) => problem.id
+      setLoading(true);
+      setError("");
+
+      try {
+        const {
+          data,
+          error: rpcError
+        } = await db.rpc(
+          "prism_get_patient",
+          {
+            p_patient_id: patientId
+          }
         );
 
-      const assessmentsResult =
-        await db
-          .from("problem_assessments")
-          .select("*")
-          .in("problem_id", problemIds)
-          .order(
-            "created_at",
-            { ascending: false }
-          );
+        if (rpcError) {
+          throw rpcError;
+        }
 
-      if (assessmentsResult.error) {
-        throw assessmentsResult.error;
+        const result = data || {};
+
+        setPatient(
+          result.patient ||
+          result
+        );
+
+        const rows =
+          result.admissions ||
+          [];
+
+        setAdmissions(rows);
+
+        const active =
+          rows.find(
+            (item) =>
+              item.status === "active" ||
+              item.discharge_datetime === null
+          ) ||
+          rows[0] ||
+          null;
+
+        setSelectedAdmissionId(
+          active?.admission_id ||
+          active?.id ||
+          null
+        );
+      } catch (err) {
+        console.error(
+          "Patient loading error:",
+          err
+        );
+
+        setPatient(null);
+        setAdmissions([]);
+
+        setError(
+          err?.message ||
+          "Unable to load patient."
+        );
+      } finally {
+        setLoading(false);
       }
-
-      setProblemAssessments(
-        assessmentsResult.data || []
-      );
-
-    } catch (loadError) {
-      setError(
-        loadError?.message ||
-        "Unable to load admission data."
-      );
-    }
-  }
-
-  useEffect(() => {
-    loadPatient();
-  }, [patientId]);
-
-  useEffect(() => {
-    loadAdmissionData(selectedAdmissionId);
-  }, [selectedAdmissionId]);
-
-  const selectedAdmission = useMemo(
-    () =>
-      admissions.find(
-        (admission) =>
-          admission.id === selectedAdmissionId
-      ) || null,
-    [admissions, selectedAdmissionId]
+    },
+    [patientId]
   );
 
-  const profileMap = useMemo(() => {
-    const map = {};
+  /*
+   * ========================================================
+   * LOAD ADMISSION
+   * ========================================================
+   */
 
-    profiles.forEach((item) => {
-      map[item.id] = item;
-    });
+  const loadAdmission = useCallback(
+    async (admissionId) => {
+      if (!admissionId) {
+        setAdmission(null);
+        return;
+      }
 
-    return map;
-  }, [profiles]);
+      try {
+        const {
+          data,
+          error: rpcError
+        } = await db.rpc(
+          "prism_get_admission",
+          {
+            p_admission_id:
+              admissionId
+          }
+        );
 
-  const wardMap = useMemo(() => {
-    const map = {};
+        if (rpcError) {
+          throw rpcError;
+        }
 
-    wards.forEach((item) => {
-      map[item.id] = item;
-    });
+        setAdmission(
+          data?.admission ||
+          data ||
+          null
+        );
+      } catch (err) {
+        console.error(
+          "Admission loading error:",
+          err
+        );
 
-    return map;
-  }, [wards]);
+        setAdmission(null);
 
-  const bedMap = useMemo(() => {
-    const map = {};
+        setError(
+          err?.message ||
+          "Unable to load admission."
+        );
+      }
+    },
+    []
+  );
 
-    beds.forEach((item) => {
-      map[item.id] = item;
-    });
+  /*
+   * ========================================================
+   * LOAD TIMELINE
+   * ========================================================
+   */
 
-    return map;
-  }, [beds]);
+  const loadTimeline = useCallback(
+    async (admissionId) => {
+      if (!admissionId) {
+        setTimeline([]);
+        return;
+      }
 
-  const responsibleMO =
-    selectedAdmission
-      ? profileMap[
-          selectedAdmission.responsible_mo_id
-        ]
-      : null;
+      setTimelineLoading(true);
 
-  const specialist =
-    selectedAdmission
-      ? profileMap[
-          selectedAdmission.specialist_id
-        ]
-      : null;
+      try {
+        const {
+          data,
+          error: rpcError
+        } = await db.rpc(
+          "prism_get_admission_timeline",
+          {
+            p_admission_id:
+              admissionId
+          }
+        );
 
-  const selectedWard =
-    selectedAdmission
-      ? wardMap[selectedAdmission.ward_id]
-      : null;
+        if (rpcError) {
+          throw rpcError;
+        }
 
-  const selectedBed =
-    selectedAdmission
-      ? bedMap[selectedAdmission.bed_id]
-      : null;
+        const result =
+          data || {};
 
-  const activeProblems =
-    problems.filter(
-      (problem) => problem.active
+        const events = [];
+
+        /*
+         * Workflow responses
+         */
+
+        (
+          result.workflow_responses ||
+          []
+        ).forEach(
+          (item) => {
+            events.push({
+              id:
+                `workflow-${item.id}`,
+              type:
+                "Daily Follow-up",
+              date:
+                item.created_at ||
+                item.submitted_at,
+              title:
+                "Clinical follow-up submitted",
+              body:
+                null,
+              raw:
+                item
+            });
+          }
+        );
+
+        /*
+         * Activity events
+         */
+
+        (
+          result.activity_events ||
+          []
+        ).forEach(
+          (item) => {
+            events.push({
+              id:
+                `activity-${item.id}`,
+              type:
+                item.action ||
+                "Clinical Activity",
+              date:
+                item.created_at ||
+                item.occurred_at,
+              title:
+                item.action ||
+                "Clinical activity",
+              body:
+                item.metadata
+                  ? JSON.stringify(
+                      item.metadata
+                    )
+                  : null,
+              raw:
+                item
+            });
+          }
+        );
+
+        events.sort(
+          (a, b) =>
+            new Date(
+              b.date || 0
+            ) -
+            new Date(
+              a.date || 0
+            )
+        );
+
+        setTimeline(events);
+      } catch (err) {
+        console.error(
+          "Timeline loading error:",
+          err
+        );
+
+        setTimeline([]);
+
+        setError(
+          err?.message ||
+          "Unable to load clinical timeline."
+        );
+      } finally {
+        setTimelineLoading(false);
+      }
+    },
+    []
+  );
+
+  /*
+   * ========================================================
+   * LOAD SPECIALIST REQUESTS
+   *
+   * The secure queue API returns requests accessible to
+   * the current user. We filter it locally to this admission.
+   * ========================================================
+   */
+
+  const loadSpecialistRequests =
+    useCallback(
+      async (admissionId) => {
+        if (!admissionId) {
+          setSpecialistRequests([]);
+          return;
+        }
+
+        try {
+          const {
+            data,
+            error: rpcError
+          } = await db.rpc(
+            "prism_get_specialist_queue"
+          );
+
+          if (rpcError) {
+            throw rpcError;
+          }
+
+          const rows =
+            Array.isArray(data)
+              ? data
+              : data?.requests || [];
+
+          setSpecialistRequests(
+            rows.filter(
+              (item) =>
+                item.admission_id ===
+                admissionId
+            )
+          );
+        } catch (err) {
+          console.error(
+            "Specialist queue loading error:",
+            err
+          );
+
+          setSpecialistRequests([]);
+        }
+      },
+      []
     );
 
-  const timeline = useMemo(() => {
-    const events = [];
+  /*
+   * ========================================================
+   * INITIAL LOAD
+   * ========================================================
+   */
 
-    dailyUpdates.forEach((update) => {
-      events.push({
-        id: `update-${update.id}`,
-        date: update.occurred_at,
-        type: "Daily Follow-up",
-        status: update.clinical_stability,
-        title:
-          update.clinical_changes ||
-          "Clinical follow-up recorded.",
-        body:
-          update.problems_assessment ||
-          update.recommendation_next_steps ||
-          ""
-      });
-    });
+  useEffect(
+    () => {
+      loadPatient();
+    },
+    [loadPatient]
+  );
 
-    investigations.forEach((investigation) => {
-      events.push({
-        id: `investigation-${investigation.id}`,
-        date:
-          investigation.performed_at ||
-          investigation.created_at,
-        type: "Investigation",
-        status: null,
-        title:
-          investigation.test_name,
-        body:
-          investigation.result
-      });
-    });
+  /*
+   * ========================================================
+   * ADMISSION CONTEXT LOAD
+   * ========================================================
+   */
 
-    specialistReviews.forEach((review) => {
-      events.push({
-        id: `review-${review.id}`,
-        date: review.reviewed_at,
-        type: "Specialist Review",
-        status: null,
-        title:
-          "Specialist review",
-        body:
-          review.clinical_assessment
-      });
-    });
+  useEffect(
+    () => {
+      if (!selectedAdmissionId) {
+        return;
+      }
 
-    return events.sort(
-      (a, b) =>
-        new Date(b.date).getTime() -
-        new Date(a.date).getTime()
+      loadAdmission(
+        selectedAdmissionId
+      );
+
+      loadTimeline(
+        selectedAdmissionId
+      );
+
+      loadSpecialistRequests(
+        selectedAdmissionId
+      );
+    },
+    [
+      selectedAdmissionId,
+      loadAdmission,
+      loadTimeline,
+      loadSpecialistRequests
+    ]
+  );
+
+  /*
+   * ========================================================
+   * PATIENT ACTIVITY
+   * ========================================================
+   */
+
+  useEffect(
+    () => {
+      if (
+        patientId &&
+        recordActivity
+      ) {
+        recordActivity(
+          "patient_workspace_opened",
+          {
+            entityType:
+              "patient",
+            entityId:
+              patientId,
+            patientId,
+            route:
+              "patient"
+          }
+        );
+      }
+    },
+    [
+      patientId,
+      recordActivity
+    ]
+  );
+
+  /*
+   * ========================================================
+   * CURRENT ADMISSION
+   * ========================================================
+   */
+
+  const selectedAdmission =
+    useMemo(
+      () =>
+        admissions.find(
+          (item) =>
+            (
+              item.admission_id ||
+              item.id
+            ) ===
+            selectedAdmissionId
+        ) ||
+        admission ||
+        null,
+      [
+        admissions,
+        selectedAdmissionId,
+        admission
+      ]
     );
-  }, [
-    dailyUpdates,
-    investigations,
-    specialistReviews
-  ]);
 
-  async function refreshAdmission() {
-    await loadAdmissionData(
-      selectedAdmissionId
-    );
-  }
+  /*
+   * ========================================================
+   * REFRESH
+   * ========================================================
+   */
 
-  function goBack() {
-    if (onNavigate) {
-      onNavigate("patients");
+  async function refreshWorkspace() {
+    await loadPatient();
+
+    if (selectedAdmissionId) {
+      await loadAdmission(
+        selectedAdmissionId
+      );
+
+      await loadTimeline(
+        selectedAdmissionId
+      );
+
+      await loadSpecialistRequests(
+        selectedAdmissionId
+      );
     }
   }
 
-  if (loading) {
-    return React.createElement(
-      "div",
-      { className: "page" },
+  /*
+   * ========================================================
+   * SPECIALIST REQUEST
+   * ========================================================
+   */
 
-      React.createElement(
-        "div",
-        { className: "card" },
-        React.createElement(
-          "div",
-          { className: "muted" },
-          "Loading patient..."
-        )
-      )
+  async function submitSpecialistRequest(
+    event
+  ) {
+    event.preventDefault();
+
+    setRequestError("");
+    setRequestSuccess("");
+
+    if (!selectedAdmissionId) {
+      setRequestError(
+        "No active admission selected."
+      );
+      return;
+    }
+
+    if (!specialistId) {
+      setRequestError(
+        "Specialist is required."
+      );
+      return;
+    }
+
+    if (!requestReason.trim()) {
+      setRequestError(
+        "Reason is required."
+      );
+      return;
+    }
+
+    if (!clinicalQuestion.trim()) {
+      setRequestError(
+        "Clinical question is required."
+      );
+      return;
+    }
+
+    setRequestSaving(true);
+
+    try {
+      const {
+        data,
+        error: rpcError
+      } = await db.rpc(
+        "prism_create_specialist_request",
+        {
+          p_admission_id:
+            selectedAdmissionId,
+
+          p_specialist_id:
+            specialistId,
+
+          p_reason:
+            requestReason.trim(),
+
+          p_clinical_question:
+            clinicalQuestion.trim(),
+
+          p_priority:
+            priority
+        }
+      );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      setRequestSuccess(
+        "Specialist request submitted."
+      );
+
+      setSpecialistId("");
+      setRequestReason("");
+      setClinicalQuestion("");
+      setPriority("routine");
+
+      setShowSpecialistRequest(
+        false
+      );
+
+      await loadSpecialistRequests(
+        selectedAdmissionId
+      );
+
+      await loadTimeline(
+        selectedAdmissionId
+      );
+    } catch (err) {
+      console.error(
+        "Specialist request error:",
+        err
+      );
+
+      setRequestError(
+        err?.message ||
+        "Unable to submit specialist request."
+      );
+    } finally {
+      setRequestSaving(false);
+    }
+  }
+
+  /*
+   * ========================================================
+   * TAB BUTTON
+   * ========================================================
+   */
+
+  function tabButton(
+    key,
+    label
+  ) {
+    return h(
+      "button",
+      {
+        type: "button",
+
+        className:
+          "btn " +
+          (
+            activeTab === key
+              ? "btn-primary"
+              : "btn-secondary"
+          ),
+
+        onClick: () =>
+          setActiveTab(key)
+      },
+
+      label
     );
   }
 
-  if (error && !patient) {
-    return React.createElement(
-      "div",
-      { className: "page" },
+  /*
+   * ========================================================
+   * LOADING
+   * ========================================================
+   */
 
-      React.createElement(
+  if (loading) {
+    return h(
+      LoadingState
+    );
+  }
+
+  /*
+   * ========================================================
+   * ERROR / NOT FOUND
+   * ========================================================
+   */
+
+  if (
+    error &&
+    !patient
+  ) {
+    return h(
+      React.Fragment,
+      null,
+
+      h(
         "div",
         {
-          className: "card",
+          className:
+            "row wrap",
           style: {
-            borderColor: "#dc2626"
+            justifyContent:
+              "space-between",
+            marginBottom:
+              "16px"
           }
         },
 
-        React.createElement(
-          "div",
-          { className: "error" },
-          error
-        ),
-
-        React.createElement(
+        h(
           "button",
           {
-            className: "btn btn-secondary",
-            style: { marginTop: "16px" },
-            onClick: goBack
+            type: "button",
+            className:
+              "btn btn-secondary",
+            onClick: () =>
+              onNavigate("patients")
           },
-          "Back to Patients"
-        )
-      )
-    );
-  }
-
-  if (!patient) {
-    return React.createElement(
-      "div",
-      { className: "page" },
-
-      React.createElement(
-        "div",
-        { className: "card" },
-
-        React.createElement(
-          "div",
-          { className: "muted" },
-          "Patient not found."
-        ),
-
-        React.createElement(
-          "button",
-          {
-            className: "btn btn-secondary",
-            style: { marginTop: "16px" },
-            onClick: goBack
-          },
-          "Back to Patients"
-        )
-      )
-    );
-  }
-
-  return React.createElement(
-    "div",
-    { className: "page" },
-
-    React.createElement(
-      "div",
-      {
-        className: "row wrap",
-        style: {
-          justifyContent: "space-between",
-          marginBottom: "16px"
-        }
-      },
-
-      React.createElement(
-        "div",
-        null,
-
-        React.createElement(
-          "div",
-          { className: "page-title" },
-          patient.full_name
-        ),
-
-        React.createElement(
-          "div",
-          { className: "page-subtitle" },
-          `${text(patient.patient_code)} • Patient Detail`
+          "← Back to Patients"
         )
       ),
 
-      React.createElement(
-        "div",
-        { className: "row wrap" },
+      h(
+        ErrorState,
+        {
+          message: error
+        }
+      )
+    );
+  }
 
-        React.createElement(
+  /*
+   * ========================================================
+   * HEADER
+   * ========================================================
+   */
+
+  return h(
+    React.Fragment,
+    null,
+
+    h(
+      "div",
+      {
+        className:
+          "row wrap",
+        style: {
+          justifyContent:
+            "space-between",
+          alignItems:
+            "flex-start",
+          marginBottom:
+            "16px"
+        }
+      },
+
+      h(
+        "div",
+        null,
+
+        h(
+          "div",
+          {
+            className:
+              "page-title"
+          },
+          text(
+            patient?.full_name ||
+            patient?.name ||
+            patient?.patient_name
+          )
+        ),
+
+        h(
+          "div",
+          {
+            className:
+              "page-subtitle"
+          },
+
+          text(
+            patient?.patient_code ||
+            patient?.code ||
+            patientId
+          )
+        )
+      ),
+
+      h(
+        "div",
+        {
+          className:
+            "row wrap"
+        },
+
+        h(
           "button",
           {
-            className: "btn btn-secondary",
-            onClick: goBack
+            type: "button",
+            className:
+              "btn btn-secondary",
+            onClick: () =>
+              onNavigate("patients")
           },
           "← Patients"
         ),
 
-        selectedAdmission
-          ? React.createElement(
-              "button",
-              {
-                className: "btn btn-primary",
-                onClick: () =>
-                  setShowFollowup(true)
-              },
-              "＋ Daily Follow-up"
-            )
-          : null
+        h(
+          "button",
+          {
+            type: "button",
+            className:
+              "btn btn-secondary",
+            onClick:
+              refreshWorkspace
+          },
+          "Refresh"
+        )
       )
     ),
 
     error
-      ? React.createElement(
+      ? h(
           "div",
           {
-            className: "card",
+            className:
+              "card",
             style: {
-              borderColor: "#dc2626",
-              marginBottom: "16px"
+              marginBottom:
+                "16px",
+              borderColor:
+                "#b45309"
             }
           },
-          React.createElement(
-            "div",
-            { className: "error" },
-            error
-          )
+          error
         )
       : null,
 
-    React.createElement(
-      "div",
+    /*
+     * ======================================================
+     * PATIENT / ADMISSION SUMMARY
+     * ======================================================
+     */
+
+    h(
+      Section,
       {
-        className: "card",
-        style: { marginBottom: "16px" }
+        title:
+          "Patient & Admission"
       },
 
-      React.createElement(
+      h(
         "div",
-        { className: "grid grid-4" },
+        {
+          className:
+            "grid grid-3"
+        },
 
-        React.createElement(
-          "div",
-          null,
-          React.createElement(
-            "div",
-            { className: "detail-label" },
-            "Patient Code"
-          ),
-          React.createElement(
-            "div",
-            { className: "detail-value" },
-            text(patient.patient_code)
-          )
+        h(
+          Field,
+          {
+            label:
+              "Patient",
+            value:
+              patient?.full_name ||
+              patient?.name
+          }
         ),
 
-        React.createElement(
-          "div",
-          null,
-          React.createElement(
-            "div",
-            { className: "detail-label" },
-            "Age"
-          ),
-          React.createElement(
-            "div",
-            { className: "detail-value" },
-            text(patient.age)
-          )
+        h(
+          Field,
+          {
+            label:
+              "Patient Code",
+            value:
+              patient?.patient_code ||
+              patient?.code
+          }
         ),
 
-        React.createElement(
-          "div",
-          null,
-          React.createElement(
-            "div",
-            { className: "detail-label" },
-            "Sex"
-          ),
-          React.createElement(
-            "div",
-            { className: "detail-value" },
-            text(patient.sex)
-          )
+        h(
+          Field,
+          {
+            label:
+              "Age",
+            value:
+              patient?.age
+          }
         ),
 
-        React.createElement(
-          "div",
-          null,
-          React.createElement(
-            "div",
-            { className: "detail-label" },
-            "Patient Type"
-          ),
-          React.createElement(
-            "div",
-            { className: "detail-value" },
-            patient.demo
-              ? "Demo"
-              : "Clinical"
-          )
+        h(
+          Field,
+          {
+            label:
+              "Sex",
+            value:
+              patient?.sex
+          }
+        ),
+
+        h(
+          Field,
+          {
+            label:
+              "Admission Status",
+            value:
+              selectedAdmission?.status
+          }
+        ),
+
+        h(
+          Field,
+          {
+            label:
+              "Admission Date",
+            value:
+              formatDate(
+                selectedAdmission?.admission_datetime
+              )
+          }
+        ),
+
+        h(
+          Field,
+          {
+            label:
+              "Ward / Unit",
+            value:
+              selectedAdmission?.unit_name ||
+              selectedAdmission?.ward_name ||
+              selectedAdmission?.ward
+          }
+        ),
+
+        h(
+          Field,
+          {
+            label:
+              "Bed",
+            value:
+              selectedAdmission?.bed_name ||
+              selectedAdmission?.bed
+          }
+        ),
+
+        h(
+          Field,
+          {
+            label:
+              "Responsible Medical Officer",
+            value:
+              selectedAdmission?.responsible_mo_name ||
+              selectedAdmission?.responsible_mo_id
+          }
+        ),
+
+        h(
+          Field,
+          {
+            label:
+              "Specialist",
+            value:
+              selectedAdmission?.specialist_name ||
+              selectedAdmission?.specialist_id
+          }
+        ),
+
+        h(
+          Field,
+          {
+            label:
+              "Reason for Admission",
+            value:
+              selectedAdmission?.reason_for_admission
+          }
+        ),
+
+        h(
+          Field,
+          {
+            label:
+              "Working Diagnosis",
+            value:
+              selectedAdmission?.working_diagnosis
+          }
         )
       )
     ),
 
-    admissions.length > 0
-      ? React.createElement(
+    /*
+     * ======================================================
+     * ADMISSION SELECTOR
+     * ======================================================
+     */
+
+    admissions.length > 1
+      ? h(
           Section,
           {
-            title: "Admission"
+            title:
+              "Patient Encounters / Admissions"
           },
 
-          React.createElement(
+          h(
             "div",
             {
-              className: "field",
-              style: { marginBottom: "16px" }
+              className:
+                "row wrap"
             },
 
-            React.createElement(
-              "label",
-              null,
-              "Admission Record"
-            ),
+            admissions.map(
+              (item) => {
+                const id =
+                  item.admission_id ||
+                  item.id;
 
-            React.createElement(
-              "select",
+                return h(
+                  "button",
+                  {
+                    key: id,
+                    type: "button",
+
+                    className:
+                      "btn " +
+                      (
+                        id ===
+                        selectedAdmissionId
+                          ? "btn-primary"
+                          : "btn-secondary"
+                      ),
+
+                    onClick: () =>
+                      setSelectedAdmissionId(
+                        id
+                      )
+                  },
+
+                  `${text(
+                    item.status
+                  )} — ${formatDate(
+                    item.admission_datetime
+                  )}`
+                );
+              }
+            )
+          )
+        )
+      : null,
+
+    /*
+     * ======================================================
+     * WORKSPACE ACTIONS
+     * ======================================================
+     */
+
+    h(
+      Section,
+      {
+        title:
+          "Clinical Actions"
+      },
+
+      h(
+        "div",
+        {
+          className:
+            "row wrap"
+        },
+
+        h(
+          "button",
+          {
+            type: "button",
+            className:
+              "btn btn-primary",
+
+            disabled:
+              !selectedAdmission,
+
+            onClick: () =>
+              setShowFollowup(true)
+          },
+          "＋ Daily Follow-up"
+        ),
+
+        h(
+          "button",
+          {
+            type: "button",
+            className:
+              "btn btn-secondary",
+
+            disabled:
+              !selectedAdmission,
+
+            onClick: () => {
+              setRequestError("");
+              setRequestSuccess("");
+              setShowSpecialistRequest(
+                true
+              );
+            }
+          },
+          "Request Specialist Review"
+        ),
+
+        h(
+          "button",
+          {
+            type: "button",
+            className:
+              "btn btn-secondary",
+
+            onClick: () =>
+              setActiveTab(
+                "timeline"
+              )
+          },
+          "Clinical Timeline"
+        )
+      ),
+
+      requestSuccess
+        ? h(
+            "div",
+            {
+              style: {
+                marginTop:
+                  "12px",
+                color:
+                  "#166534"
+              }
+            },
+            requestSuccess
+          )
+        : null
+    ),
+
+    /*
+     * ======================================================
+     * TABS
+     * ======================================================
+     */
+
+    h(
+      "div",
+      {
+        className:
+          "row wrap",
+        style: {
+          marginBottom:
+            "16px"
+        }
+      },
+
+      tabButton(
+        "overview",
+        "Overview"
+      ),
+
+      tabButton(
+        "timeline",
+        "Timeline"
+      ),
+
+      tabButton(
+        "specialist",
+        "Specialist"
+      )
+    ),
+
+    /*
+     * ======================================================
+     * OVERVIEW
+     * ======================================================
+     */
+
+    activeTab === "overview"
+      ? h(
+          React.Fragment,
+          null,
+
+          h(
+            Section,
+            {
+              title:
+                "Current Clinical Status"
+            },
+
+            h(
+              "div",
               {
-                value:
-                  selectedAdmissionId || "",
-                onChange: (event) =>
-                  setSelectedAdmissionId(
-                    event.target.value
-                  )
+                className:
+                  "grid grid-3"
               },
 
-              admissions.map(
-                (admission) =>
-                  React.createElement(
-                    "option",
-                    {
-                      key: admission.id,
-                      value: admission.id
-                    },
-                    `${formatDateOnly(
-                      admission.admission_datetime
-                    )} — ${text(
-                      admission.working_diagnosis ||
-                      admission.reason_for_admission
-                    )} — ${text(
-                      admission.status
-                    )}`
-                  )
+              h(
+                Field,
+                {
+                  label:
+                    "Admission Status",
+                  value:
+                    selectedAdmission?.status
+                }
+              ),
+
+              h(
+                Field,
+                {
+                  label:
+                    "Current Unit",
+                  value:
+                    selectedAdmission?.unit_name ||
+                    selectedAdmission?.ward_name
+                }
+              ),
+
+              h(
+                Field,
+                {
+                  label:
+                    "Bed",
+                  value:
+                    selectedAdmission?.bed_name ||
+                    selectedAdmission?.bed
+                }
               )
             )
           ),
 
-          selectedAdmission
-            ? React.createElement(
-                React.Fragment,
-                null,
-
-                React.createElement(
-                  "div",
-                  {
-                    className:
-                      "grid grid-3"
-                  },
-
-                  React.createElement(
-                    Field,
-                    {
-                      label: "Status",
-                      value:
-                        selectedAdmission.status
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label: "Admission Date",
-                      value:
-                        formatDate(
-                          selectedAdmission.admission_datetime
-                        )
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label: "Discharge Date",
-                      value:
-                        selectedAdmission.discharge_datetime
-                          ? formatDate(
-                              selectedAdmission.discharge_datetime
-                            )
-                          : "Still admitted"
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label: "Ward",
-                      value:
-                        selectedWard?.name
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label: "Bed",
-                      value:
-                        selectedBed?.name
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label: "Responsible MO",
-                      value:
-                        responsibleMO?.display_name
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label: "Specialist",
-                      value:
-                        specialist?.display_name
-                    }
-                  )
-                ),
-
-                React.createElement(
-                  "div",
-                  {
-                    className: "grid grid-2",
-                    style: {
-                      marginTop: "16px"
-                    }
-                  },
-
-                  React.createElement(
-                    Field,
-                    {
-                      label:
-                        "Reason for Admission",
-                      value:
-                        selectedAdmission.reason_for_admission
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label:
-                        "Working Diagnosis",
-                      value:
-                        selectedAdmission.working_diagnosis
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label:
-                        "Brief Summary",
-                      value:
-                        selectedAdmission.brief_summary
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label:
-                        "Relevant Background",
-                      value:
-                        selectedAdmission.relevant_background
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label:
-                        "Baseline Clinical Status",
-                      value:
-                        selectedAdmission.baseline_clinical_status
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label:
-                        "Baseline Investigations",
-                      value:
-                        selectedAdmission.baseline_investigations
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label:
-                        "Initial Plan",
-                      value:
-                        selectedAdmission.initial_plan
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label:
-                        "Goals / Targets",
-                      value:
-                        selectedAdmission.goals_targets
-                    }
-                  )
-                )
-              )
-            : null
-        )
-      : React.createElement(
-          Section,
-          {
-            title: "Admission"
-          },
-          React.createElement(
-            EmptyState,
-            {
-              message:
-                "No admission record is linked to this patient."
-            }
-          )
-        ),
-
-    React.createElement(
-      "div",
-      {
-        className: "row wrap",
-        style: {
-          gap: "8px",
-          marginBottom: "16px"
-        }
-      },
-
-      [
-        ["overview", "Overview"],
-        ["problems", "Problems"],
-        ["followup", "Daily Follow-up"],
-        ["investigations", "Investigations"],
-        ["specialist", "Specialist"],
-        ["timeline", "Timeline"]
-      ].map(([key, label]) =>
-        React.createElement(
-          "button",
-          {
-            key,
-            className:
-              activeTab === key
-                ? "btn btn-primary"
-                : "btn btn-secondary",
-            onClick: () =>
-              setActiveTab(key)
-          },
-          label
-        )
-      )
-    ),
-
-    activeTab === "overview"
-      ? React.createElement(
-          React.Fragment,
-          null,
-
-          React.createElement(
-            Section,
-            {
-              title: "Current Clinical State"
-            },
-
-            selectedAdmission
-              ? React.createElement(
-                  "div",
-                  {
-                    className:
-                      "grid grid-3"
-                  },
-
-                  React.createElement(
-                    Field,
-                    {
-                      label: "Admission Status",
-                      value:
-                        selectedAdmission.status
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label:
-                        "Active Problems",
-                      value:
-                        activeProblems.length
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label:
-                        "Latest Clinical Stability",
-                      value:
-                        dailyUpdates[0]
-                          ?.clinical_stability ||
-                        "No daily review yet"
-                    }
-                  )
-                )
-              : React.createElement(
-                  EmptyState,
-                  {
-                    message:
-                      "Select an admission to view the current clinical state."
-                  }
-                )
-          ),
-
-          React.createElement(
+          h(
             Section,
             {
               title:
-                "Latest Clinical Information"
-            },
-
-            dailyUpdates.length > 0
-              ? React.createElement(
-                  "div",
-                  null,
-
-                  React.createElement(
-                    "div",
-                    {
-                      className:
-                        "row wrap",
-                      style: {
-                        justifyContent:
-                          "space-between",
-                        marginBottom:
-                          "8px"
-                      }
-                    },
-
-                    React.createElement(
-                      "strong",
-                      null,
-                      formatDate(
-                        dailyUpdates[0]
-                          .occurred_at
-                      )
-                    ),
-
-                    React.createElement(
-                      "span",
-                      {
-                        className:
-                          statusClass(
-                            dailyUpdates[0]
-                              .clinical_stability
-                          )
-                      },
-                      text(
-                        dailyUpdates[0]
-                          .clinical_stability
-                      )
-                    )
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label:
-                        "Clinical Change / Events",
-                      value:
-                        dailyUpdates[0]
-                          .clinical_changes
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label:
-                        "Problems / Assessment",
-                      value:
-                        dailyUpdates[0]
-                          .problems_assessment
-                    }
-                  ),
-
-                  React.createElement(
-                    Field,
-                    {
-                      label:
-                        "Recommendation / Next Steps",
-                      value:
-                        dailyUpdates[0]
-                          .recommendation_next_steps
-                    }
-                  )
-                )
-              : React.createElement(
-                  EmptyState,
+                `Specialist Requests (${specialistRequests.length})`,
+              action:
+                h(
+                  "button",
                   {
-                    message:
-                      "No daily follow-up has been recorded."
-                  }
-                )
-          )
-        )
-      : null,
-
-    activeTab === "problems"
-      ? React.createElement(
-          Section,
-          {
-            title:
-              `Active Problems (${activeProblems.length})`
-          },
-
-          activeProblems.length > 0
-            ? activeProblems.map(
-                (problem) => {
-                  const assessments =
-                    problemAssessments.filter(
-                      (item) =>
-                        item.problem_id ===
-                        problem.id
-                    );
-
-                  return React.createElement(
-                    "div",
-                    {
-                      key: problem.id,
-                      className: "card",
-                      style: {
-                        marginBottom:
-                          "12px",
-                        background:
-                          "rgba(0,0,0,0.02)"
-                      }
-                    },
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "row wrap",
-                        style: {
-                          justifyContent:
-                            "space-between"
-                        }
-                      },
-
-                      React.createElement(
-                        "strong",
-                        null,
-                        `Problem ${
-                          problem.problem_no
-                        }: ${
-                          problem.problem
-                        }`
-                      ),
-
-                      React.createElement(
-                        "span",
-                        {
-                          className:
-                            statusClass(
-                              problem.current_status
-                            )
-                        },
-                        text(
-                          problem.current_status
-                        )
-                      )
-                    ),
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "grid grid-2",
-                        style: {
-                          marginTop:
-                            "12px"
-                        }
-                      },
-
-                      React.createElement(
-                        Field,
-                        {
-                          label:
-                            "Goal / Target",
-                          value:
-                            problem.goal_target
-                        }
-                      ),
-
-                      React.createElement(
-                        Field,
-                        {
-                          label:
-                            "Monitoring",
-                          value:
-                            problem.monitoring
-                        }
-                      ),
-
-                      React.createElement(
-                        Field,
-                        {
-                          label:
-                            "Initial Management",
-                          value:
-                            problem.initial_management
-                        }
-                      ),
-
-                      React.createElement(
-                        Field,
-                        {
-                          label:
-                            "Current Status",
-                          value:
-                            problem.current_status
-                        }
-                      )
-                    ),
-
-                    assessments.length > 0
-                      ? React.createElement(
-                          "div",
-                          {
-                            style: {
-                              marginTop:
-                                "14px"
-                            }
-                          },
-
-                          React.createElement(
-                            "strong",
-                            null,
-                            "Assessments"
-                          ),
-
-                          assessments.map(
-                            (assessment) =>
-                              React.createElement(
-                                "div",
-                                {
-                                  key:
-                                    assessment.id,
-                                  className:
-                                    "card",
-                                  style: {
-                                    marginTop:
-                                      "8px"
-                                  }
-                                },
-
-                                React.createElement(
-                                  "div",
-                                  {
-                                    className:
-                                      "muted"
-                                  },
-                                  formatDate(
-                                    assessment.created_at
-                                  )
-                                ),
-
-                                React.createElement(
-                                  "div",
-                                  {
-                                    style: {
-                                      marginTop:
-                                        "6px"
-                                    }
-                                  },
-                                  assessment.assessment
-                                ),
-
-                                assessment.response
-                                  ? React.createElement(
-                                      "div",
-                                      {
-                                        style: {
-                                          marginTop:
-                                            "6px"
-                                        }
-                                      },
-                                      React.createElement(
-                                        "strong",
-                                        null,
-                                        "Response: "
-                                      ),
-                                      assessment.response
-                                    )
-                                  : null
-                              )
-                          )
-                        )
-                      : null
-                  );
-                }
-              )
-            : React.createElement(
-                EmptyState,
-                {
-                  message:
-                    "No active problems recorded for this admission."
-                }
-              )
-        )
-      : null,
-
-    activeTab === "followup"
-      ? React.createElement(
-          Section,
-          {
-            title:
-              "PRISM Daily Follow-up",
-
-            action:
-              selectedAdmission
-                ? React.createElement(
-                    "button",
-                    {
-                      className:
-                        "btn btn-primary",
-                      onClick: () =>
-                        setShowFollowup(
-                          true
-                        )
-                    },
-                    "＋ New Review"
-                  )
-                : null
-          },
-
-          dailyUpdates.length > 0
-            ? dailyUpdates.map(
-                (update) =>
-                  React.createElement(
-                    "div",
-                    {
-                      key: update.id,
-                      className: "card",
-                      style: {
-                        marginBottom:
-                          "12px"
-                      }
-                    },
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "row wrap",
-                        style: {
-                          justifyContent:
-                            "space-between"
-                        }
-                      },
-
-                      React.createElement(
-                        "strong",
-                        null,
-                        formatDate(
-                          update.occurred_at
-                        )
-                      ),
-
-                      React.createElement(
-                        "span",
-                        {
-                          className:
-                            statusClass(
-                              update.clinical_stability
-                            )
-                        },
-                        text(
-                          update.clinical_stability
-                        )
-                      )
-                    ),
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "grid grid-2",
-                        style: {
-                          marginTop:
-                            "12px"
-                        }
-                      },
-
-                      React.createElement(
-                        Field,
-                        {
-                          label:
-                            "Clinical Change / Events",
-                          value:
-                            update.clinical_changes
-                        }
-                      ),
-
-                      React.createElement(
-                        Field,
-                        {
-                          label:
-                            "New Results",
-                          value:
-                            update.new_results
-                        }
-                      ),
-
-                      React.createElement(
-                        Field,
-                        {
-                          label:
-                            "Problems / Assessment",
-                          value:
-                            update.problems_assessment
-                        }
-                      ),
-
-                      React.createElement(
-                        Field,
-                        {
-                          label:
-                            "Response to Treatment",
-                          value:
-                            update.response
-                        }
-                      ),
-
-                      React.createElement(
-                        Field,
-                        {
-                          label:
-                            "Management Changes",
-                          value:
-                            update.management_changes
-                        }
-                      ),
-
-                      React.createElement(
-                        Field,
-                        {
-                          label:
-                            "Remaining Inpatient Needs",
-                          value:
-                            update.remaining_inpatient_needs
-                        }
-                      ),
-
-                      React.createElement(
-                        Field,
-                        {
-                          label:
-                            "Why Still Admitted",
-                          value:
-                            update.why_still_admitted
-                        }
-                      ),
-
-                      React.createElement(
-                        Field,
-                        {
-                          label:
-                            "Recommendation / Next Steps",
-                          value:
-                            update.recommendation_next_steps
-                        }
-                      ),
-
-                      React.createElement(
-                        Field,
-                        {
-                          label:
-                            "Escalation / Red Flags",
-                          value:
-                            update.escalation_red_flags
-                        }
-                      )
-                    )
-                  )
-              )
-            : React.createElement(
-                EmptyState,
-                {
-                  message:
-                    "No daily follow-up records yet."
-                }
-              )
-        )
-      : null,
-
-    activeTab === "investigations"
-      ? React.createElement(
-          Section,
-          {
-            title:
-              `Investigations (${investigations.length})`
-          },
-
-          investigations.length > 0
-            ? React.createElement(
-                "div",
-                {
-                  style: {
-                    overflowX:
-                      "auto"
-                  }
-                },
-
-                React.createElement(
-                  "table",
-                  {
+                    type: "button",
                     className:
-                      "clinical-table"
-                  },
+                      "btn btn-secondary",
 
-                  React.createElement(
-                    "thead",
-                    null,
-
-                    React.createElement(
-                      "tr",
-                      null,
-
-                      React.createElement(
-                        "th",
-                        null,
-                        "Date"
-                      ),
-
-                      React.createElement(
-                        "th",
-                        null,
-                        "Category"
-                      ),
-
-                      React.createElement(
-                        "th",
-                        null,
-                        "Test"
-                      ),
-
-                      React.createElement(
-                        "th",
-                        null,
-                        "Result"
-                      ),
-
-                      React.createElement(
-                        "th",
-                        null,
-                        "Clinical Significance"
+                    onClick: () =>
+                      setActiveTab(
+                        "specialist"
                       )
-                    )
-                  ),
-
-                  React.createElement(
-                    "tbody",
-                    null,
-
-                    investigations.map(
-                      (item) =>
-                        React.createElement(
-                          "tr",
-                          { key: item.id },
-
-                          React.createElement(
-                            "td",
-                            null,
-                            formatDate(
-                              item.performed_at ||
-                              item.created_at
-                            )
-                          ),
-
-                          React.createElement(
-                            "td",
-                            null,
-                            text(
-                              item.category
-                            )
-                          ),
-
-                          React.createElement(
-                            "td",
-                            null,
-                            text(
-                              item.test_name
-                            )
-                          ),
-
-                          React.createElement(
-                            "td",
-                            null,
-                            text(
-                              item.result
-                            )
-                          ),
-
-                          React.createElement(
-                            "td",
-                            null,
-                            text(
-                              item.clinical_significance
-                            )
-                          )
-                        )
-                    )
-                  )
+                  },
+                  "View all"
                 )
-              )
-            : React.createElement(
-                EmptyState,
-                {
-                  message:
-                    "No investigations recorded for this admission."
-                }
-              )
-        )
-      : null,
-
-    activeTab === "specialist"
-      ? React.createElement(
-          React.Fragment,
-          null,
-
-          React.createElement(
-            Section,
-            {
-              title:
-                `Specialist Requests (${specialistRequests.length})`
             },
 
-            specialistRequests.length > 0
+            specialistRequests.length
               ? specialistRequests.map(
                   (request) =>
-                    React.createElement(
+                    h(
                       "div",
                       {
                         key:
@@ -1771,11 +1398,11 @@ export default function Patient({
                           "card",
                         style: {
                           marginBottom:
-                            "12px"
+                            "10px"
                         }
                       },
 
-                      React.createElement(
+                      h(
                         "div",
                         {
                           className:
@@ -1786,7 +1413,7 @@ export default function Patient({
                           }
                         },
 
-                        React.createElement(
+                        h(
                           "strong",
                           null,
                           text(
@@ -1794,7 +1421,7 @@ export default function Patient({
                           )
                         ),
 
-                        React.createElement(
+                        h(
                           "span",
                           {
                             className:
@@ -1808,320 +1435,671 @@ export default function Patient({
                         )
                       ),
 
-                      React.createElement(
+                      h(
                         "div",
                         {
                           className:
-                            "grid grid-3",
+                            "muted",
                           style: {
                             marginTop:
-                              "10px"
+                              "8px"
                           }
                         },
-
-                        React.createElement(
-                          Field,
-                          {
-                            label:
-                              "Priority",
-                            value:
-                              request.priority
-                          }
-                        ),
-
-                        React.createElement(
-                          Field,
-                          {
-                            label:
-                              "Reason",
-                            value:
-                              request.reason
-                          }
-                        ),
-
-                        React.createElement(
-                          Field,
-                          {
-                            label:
-                              "Requested",
-                            value:
-                              formatDate(
-                                request.requested_at
-                              )
-                          }
-                        )
+                        `${text(
+                          request.priority
+                        )} · ${formatDate(
+                          request.requested_at
+                        )}`
                       )
                     )
                 )
-              : React.createElement(
+              : h(
                   EmptyState,
                   {
                     message:
-                      "No specialist requests recorded."
+                      "No specialist requests for this admission."
                   }
                 )
           ),
 
-          React.createElement(
+          h(
             Section,
             {
               title:
-                `Specialist Reviews (${specialistReviews.length})`
+                "Recent Clinical Activity"
             },
 
-            specialistReviews.length > 0
-              ? specialistReviews.map(
-                  (review) =>
-                    React.createElement(
-                      "div",
-                      {
-                        key: review.id,
-                        className:
-                          "card",
-                        style: {
-                          marginBottom:
-                            "12px"
-                        }
-                      },
-
-                      React.createElement(
+            timeline.length
+              ? timeline
+                  .slice(0, 5)
+                  .map(
+                    (event) =>
+                      h(
                         "div",
                         {
-                          className:
-                            "row wrap",
+                          key:
+                            event.id,
                           style: {
-                            justifyContent:
-                              "space-between"
+                            borderLeft:
+                              "3px solid #0f766e",
+                            paddingLeft:
+                              "12px",
+                            marginBottom:
+                              "14px"
                           }
                         },
 
-                        React.createElement(
-                          "strong",
-                          null,
-                          "Specialist Review"
-                        ),
-
-                        React.createElement(
-                          "span",
+                        h(
+                          "div",
                           {
                             className:
                               "muted"
                           },
                           formatDate(
-                            review.reviewed_at
+                            event.date
                           )
-                        )
-                      ),
-
-                      React.createElement(
-                        "div",
-                        {
-                          className:
-                            "grid grid-2",
-                          style: {
-                            marginTop:
-                              "12px"
-                          }
-                        },
-
-                        React.createElement(
-                          Field,
-                          {
-                            label:
-                              "Clinical Assessment",
-                            value:
-                              review.clinical_assessment
-                          }
                         ),
 
-                        React.createElement(
-                          Field,
+                        h(
+                          "div",
                           {
-                            label:
-                              "Problem Assessment",
-                            value:
-                              review.problem_assessment
-                          }
+                            style: {
+                              fontWeight:
+                                "700",
+                              marginTop:
+                                "3px"
+                            }
+                          },
+                          text(
+                            event.title
+                          )
                         ),
 
-                        React.createElement(
-                          Field,
-                          {
-                            label:
-                              "Recommendations",
-                            value:
-                              review.recommendations
-                          }
-                        ),
-
-                        React.createElement(
-                          Field,
-                          {
-                            label:
-                              "Management Plan",
-                            value:
-                              review.management_plan
-                          }
-                        ),
-
-                        React.createElement(
-                          Field,
-                          {
-                            label:
-                              "Monitoring Instructions",
-                            value:
-                              review.monitoring_instructions
-                          }
-                        ),
-
-                        React.createElement(
-                          Field,
-                          {
-                            label:
-                              "Follow-up Timing",
-                            value:
-                              review.follow_up_timing
-                          }
-                        ),
-
-                        React.createElement(
-                          Field,
-                          {
-                            label:
-                              "Escalation Instructions",
-                            value:
-                              review.escalation_instructions
-                          }
-                        ),
-
-                        React.createElement(
-                          Field,
-                          {
-                            label:
-                              "Signature",
-                            value:
-                              review.signature
-                          }
-                        )
+                        event.body
+                          ? h(
+                              "div",
+                              {
+                                className:
+                                  "muted",
+                                style: {
+                                  marginTop:
+                                    "4px"
+                                }
+                              },
+                              event.body
+                            )
+                          : null
                       )
-                    )
-                )
-              : React.createElement(
+                  )
+              : h(
                   EmptyState,
                   {
                     message:
-                      "No specialist reviews recorded."
+                      "No clinical activity recorded yet."
                   }
                 )
           )
         )
       : null,
 
+    /*
+     * ======================================================
+     * TIMELINE
+     * ======================================================
+     */
+
     activeTab === "timeline"
-      ? React.createElement(
+      ? h(
           Section,
           {
             title:
               `Clinical Timeline (${timeline.length})`
           },
 
-          timeline.length > 0
-            ? timeline.map(
-                (event) =>
-                  React.createElement(
+          timelineLoading
+            ? h(
+                "div",
+                {
+                  className:
+                    "muted"
+                },
+                "Loading timeline..."
+              )
+
+            : timeline.length
+              ? timeline.map(
+                  (event) =>
+                    h(
+                      "div",
+                      {
+                        key:
+                          event.id,
+                        style: {
+                          position:
+                            "relative",
+                          borderLeft:
+                            "3px solid #0f766e",
+                          paddingLeft:
+                            "16px",
+                          marginBottom:
+                            "20px"
+                        }
+                      },
+
+                      h(
+                        "div",
+                        {
+                          className:
+                            "muted"
+                        },
+                        formatDate(
+                          event.date
+                        )
+                      ),
+
+                      h(
+                        "div",
+                        {
+                          style: {
+                            fontWeight:
+                              "700",
+                            marginTop:
+                              "4px"
+                          }
+                        },
+                        text(
+                          event.type
+                        )
+                      ),
+
+                      h(
+                        "div",
+                        {
+                          style: {
+                            marginTop:
+                              "3px"
+                          }
+                        },
+                        text(
+                          event.title
+                        )
+                      ),
+
+                      event.body
+                        ? h(
+                            "div",
+                            {
+                              className:
+                                "muted",
+                              style: {
+                                marginTop:
+                                  "5px",
+                                wordBreak:
+                                  "break-word"
+                              }
+                            },
+                            event.body
+                          )
+                        : null
+                    )
+                )
+
+              : h(
+                  EmptyState,
+                  {
+                    message:
+                      "No clinical timeline events recorded."
+                  }
+                )
+        )
+      : null,
+
+    /*
+     * ======================================================
+     * SPECIALIST TAB
+     * ======================================================
+     */
+
+    activeTab === "specialist"
+      ? h(
+          Section,
+          {
+            title:
+              `Specialist Requests (${specialistRequests.length})`,
+            action:
+              h(
+                "button",
+                {
+                  type: "button",
+                  className:
+                    "btn btn-primary",
+                  onClick: () => {
+                    setRequestError("");
+                    setRequestSuccess("");
+                    setShowSpecialistRequest(
+                      true
+                    );
+                  }
+                },
+                "＋ New Request"
+              )
+          },
+
+          specialistRequests.length
+            ? specialistRequests.map(
+                (request) =>
+                  h(
                     "div",
                     {
-                      key: event.id,
+                      key:
+                        request.id,
+                      className:
+                        "card",
                       style: {
-                        borderLeft:
-                          "3px solid #0f766e",
-                        paddingLeft:
-                          "14px",
                         marginBottom:
-                          "18px"
+                          "12px"
                       }
                     },
 
-                    React.createElement(
+                    h(
                       "div",
                       {
                         className:
-                          "muted"
-                      },
-                      formatDate(
-                        event.date
-                      )
-                    ),
-
-                    React.createElement(
-                      "div",
-                      {
+                          "row wrap",
                         style: {
-                          marginTop:
-                            "3px",
-                          fontWeight:
-                            "700"
+                          justifyContent:
+                            "space-between"
                         }
                       },
-                      event.type
-                    ),
 
-                    React.createElement(
-                      "div",
-                      {
-                        style: {
-                          marginTop:
-                            "4px"
-                        }
-                      },
-                      text(
-                        event.title
-                      )
-                    ),
-
-                    event.body
-                      ? React.createElement(
-                          "div",
-                          {
-                            className:
-                              "muted",
-                            style: {
-                              marginTop:
-                                "4px"
-                            }
-                          },
-                          event.body
+                      h(
+                        "strong",
+                        null,
+                        text(
+                          request.clinical_question
                         )
-                      : null
+                      ),
+
+                      h(
+                        "span",
+                        {
+                          className:
+                            statusClass(
+                              request.status
+                            )
+                        },
+                        text(
+                          request.status
+                        )
+                      )
+                    ),
+
+                    h(
+                      "div",
+                      {
+                        className:
+                          "grid grid-3",
+                        style: {
+                          marginTop:
+                            "12px"
+                        }
+                      },
+
+                      h(
+                        Field,
+                        {
+                          label:
+                            "Priority",
+                          value:
+                            request.priority
+                        }
+                      ),
+
+                      h(
+                        Field,
+                        {
+                          label:
+                            "Reason",
+                          value:
+                            request.reason
+                        }
+                      ),
+
+                      h(
+                        Field,
+                        {
+                          label:
+                            "Requested",
+                          value:
+                            formatDate(
+                              request.requested_at
+                            )
+                        }
+                      )
+                    )
                   )
               )
-            : React.createElement(
+
+            : h(
                 EmptyState,
                 {
                   message:
-                    "No clinical timeline events recorded."
+                    "No specialist requests for this admission."
                 }
               )
         )
       : null,
 
+    /*
+     * ======================================================
+     * FOLLOW-UP MODAL
+     * ======================================================
+     */
+
     showFollowup &&
     selectedAdmission
-      ? React.createElement(
+      ? h(
           FollowupModal,
           {
             admission:
               selectedAdmission,
+
             user:
-              session?.user || profile,
+              session?.user ||
+              profile,
+
             onClose: () =>
               setShowFollowup(false),
+
             onSaved: async () => {
               setShowFollowup(false);
-              await refreshAdmission();
+
+              await loadTimeline(
+                selectedAdmissionId
+              );
+
+              await loadSpecialistRequests(
+                selectedAdmissionId
+              );
             }
           }
         )
+      : null,
+
+    /*
+     * ======================================================
+     * SPECIALIST REQUEST MODAL
+     * ======================================================
+     */
+
+    showSpecialistRequest
+      ? h(
+          "div",
+          {
+            className:
+              "modal-backdrop"
+          },
+
+          h(
+            "div",
+            {
+              className:
+                "modal"
+            },
+
+            h(
+              "div",
+              {
+                className:
+                  "row wrap",
+                style: {
+                  justifyContent:
+                    "space-between",
+                  marginBottom:
+                    "16px"
+                }
+              },
+
+              h(
+                "div",
+                {
+                  className:
+                    "section-title"
+                },
+                "Request Specialist Review"
+              ),
+
+              h(
+                "button",
+                {
+                  type:
+                    "button",
+                  className:
+                    "btn btn-secondary",
+                  onClick: () =>
+                    setShowSpecialistRequest(
+                      false
+                    )
+                },
+                "Close"
+              )
+            ),
+
+            requestError
+              ? h(
+                  "div",
+                  {
+                    style: {
+                      color:
+                        "#b91c1c",
+                      marginBottom:
+                        "12px"
+                    }
+                  },
+                  requestError
+                )
+              : null,
+
+            h(
+              "form",
+              {
+                onSubmit:
+                  submitSpecialistRequest
+              },
+
+              h(
+                "div",
+                {
+                  className:
+                    "field"
+                },
+
+                h(
+                  "label",
+                  null,
+                  "Specialist User ID"
+                ),
+
+                h(
+                  "input",
+                  {
+                    value:
+                      specialistId,
+                    onChange:
+                      (e) =>
+                        setSpecialistId(
+                          e.target.value
+                        ),
+                    placeholder:
+                      "Enter specialist user ID",
+                    required:
+                      true
+                  }
+                )
+              ),
+
+              h(
+                "div",
+                {
+                  className:
+                    "field"
+                },
+
+                h(
+                  "label",
+                  null,
+                  "Priority"
+                ),
+
+                h(
+                  "select",
+                  {
+                    value:
+                      priority,
+                    onChange:
+                      (e) =>
+                        setPriority(
+                          e.target.value
+                        )
+                  },
+
+                  h(
+                    "option",
+                    {
+                      value:
+                        "routine"
+                    },
+                    "Routine"
+                  ),
+
+                  h(
+                    "option",
+                    {
+                      value:
+                        "high"
+                    },
+                    "High"
+                  ),
+
+                  h(
+                    "option",
+                    {
+                      value:
+                        "urgent"
+                    },
+                    "Urgent"
+                  )
+                )
+              ),
+
+              h(
+                "div",
+                {
+                  className:
+                    "field"
+                },
+
+                h(
+                  "label",
+                  null,
+                  "Reason"
+                ),
+
+                h(
+                  "textarea",
+                  {
+                    value:
+                      requestReason,
+                    onChange:
+                      (e) =>
+                        setRequestReason(
+                          e.target.value
+                        ),
+                    rows:
+                      4,
+                    required:
+                      true
+                  }
+                )
+              ),
+
+              h(
+                "div",
+                {
+                  className:
+                    "field"
+                },
+
+                h(
+                  "label",
+                  null,
+                  "Clinical Question"
+                ),
+
+                h(
+                  "textarea",
+                  {
+                    value:
+                      clinicalQuestion,
+                    onChange:
+                      (e) =>
+                        setClinicalQuestion(
+                          e.target.value
+                        ),
+                    rows:
+                      4,
+                    required:
+                      true
+                  }
+                )
+              ),
+
+              h(
+                "div",
+                {
+                  className:
+                    "row wrap",
+                    style: {
+                      justifyContent:
+                        "flex-end",
+                      marginTop:
+                        "16px"
+                    }
+                },
+
+                h(
+                  "button",
+                  {
+                    type:
+                      "button",
+                    className:
+                      "btn btn-secondary",
+                    onClick: () =>
+                      setShowSpecialistRequest(
+                        false
+                      )
+                  },
+                  "Cancel"
+                ),
+
+                h(
+                  "button",
+                  {
+                    type:
+                      "submit",
+                    className:
+                      "btn btn-primary",
+                    disabled:
+                      requestSaving
+                  },
+                  requestSaving
+                    ? "Submitting..."
+                    : "Submit Request"
+                )
+              )
+            )
+          )
+        )
       : null
   );
-      }
+    }
