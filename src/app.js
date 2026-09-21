@@ -11,201 +11,6 @@ import Administration from "./pages/Administration.js";
 import { db } from "./supabase.js";
 
 
-/* =========================================================
-   PRISM SESSION + ACTIVITY MONITORING
-   ========================================================= */
-
-const SESSION_STORAGE_KEY = "prism_session_id";
-const HEARTBEAT_INTERVAL = 60 * 1000; // 1 minute
-
-
-function getStoredSessionId() {
-  try {
-    return localStorage.getItem(SESSION_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-
-function storeSessionId(sessionId) {
-  try {
-    if (sessionId) {
-      localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
-    }
-  } catch {
-    // Ignore storage failures.
-  }
-}
-
-
-function clearStoredSessionId() {
-  try {
-    localStorage.removeItem(SESSION_STORAGE_KEY);
-  } catch {
-    // Ignore storage failures.
-  }
-}
-
-
-/*
- * Create a new PRISM application session.
- *
- * Important:
- * This is NOT the Supabase authentication session.
- * It is PRISM's own activity/session record.
- */
-async function startPrismSession(user, profile) {
-  if (!user?.id) return null;
-
-  /*
-   * If there is already a session stored locally, do not
-   * automatically reuse it as a new active session.
-   *
-   * We create a new PRISM session after a fresh application load.
-   */
-  const roleSnapshot = profile?.role || "unknown";
-
-  const { data, error } = await db
-    .from("user_sessions")
-    .insert({
-      user_id: user.id,
-      role_snapshot: roleSnapshot,
-      session_type: "web",
-      location_label: profile?.department_id
-        ? `Department: ${profile.department_id}`
-        : "Web",
-      user_agent: navigator.userAgent,
-      metadata: {
-        source: "prism_web_app"
-      }
-    })
-    .select("id")
-    .single();
-
-  if (error) {
-    console.error("PRISM session creation failed:", error);
-    return null;
-  }
-
-  storeSessionId(data.id);
-
-  await recordActivity({
-    userId: user.id,
-    sessionId: data.id,
-    action: "login",
-    entityType: "session",
-    entityId: data.id,
-    metadata: {
-      role: roleSnapshot
-    }
-  });
-
-  return data.id;
-}
-
-
-/*
- * Update session heartbeat.
- */
-async function heartbeatSession(sessionId) {
-  if (!sessionId) return;
-
-  const { error } = await db
-    .from("user_sessions")
-    .update({
-      last_seen_at: new Date().toISOString()
-    })
-    .eq("id", sessionId)
-    .is("ended_at", null);
-
-  if (error) {
-    console.error("PRISM heartbeat failed:", error);
-  }
-}
-
-
-/*
- * Close the current PRISM session.
- */
-async function endPrismSession(userId) {
-  const sessionId = getStoredSessionId();
-
-  if (!sessionId) return;
-
-  if (userId) {
-    await recordActivity({
-      userId,
-      sessionId,
-      action: "logout",
-      entityType: "session",
-      entityId: sessionId
-    });
-  }
-
-  const { error } = await db
-    .from("user_sessions")
-    .update({
-      ended_at: new Date().toISOString(),
-      last_seen_at: new Date().toISOString()
-    })
-    .eq("id", sessionId)
-    .is("ended_at", null);
-
-  if (error) {
-    console.error("PRISM session close failed:", error);
-  }
-
-  clearStoredSessionId();
-}
-
-
-/*
- * Record an application activity event.
- *
- * Do NOT put clinical content in metadata.
- * Patient identifiers should only be represented by
- * the database patient_id field where applicable.
- */
-async function recordActivity({
-  userId,
-  sessionId,
-  action,
-  entityType = null,
-  entityId = null,
-  patientId = null,
-  route = null,
-  metadata = {}
-}) {
-  if (!userId || !action) return;
-
-  const { error } = await db
-    .from("activity_events")
-    .insert({
-      actor_id: userId,
-      session_id: sessionId || null,
-      action,
-      entity_type: entityType,
-      entity_id: entityId,
-      patient_id: patientId,
-      route,
-      metadata
-    });
-
-  if (error) {
-    /*
-     * Activity monitoring must never crash the clinical app.
-     * If activity logging fails, the clinical workflow continues.
-     */
-    console.error("PRISM activity logging failed:", error);
-  }
-}
-
-
-/* =========================================================
-   MAIN APPLICATION
-   ========================================================= */
-
 function App() {
   const [session, setSession] = React.useState(null);
   const [profile, setProfile] = React.useState(null);
@@ -218,11 +23,13 @@ function App() {
   const heartbeatTimerRef = React.useRef(null);
 
 
-  /* -------------------------------------------------------
-     Load profile
-     ------------------------------------------------------- */
+  /* ========================================================
+     PROFILE
+     ======================================================== */
 
   async function loadProfile(userId) {
+    if (!userId) return null;
+
     const { data, error } = await db
       .from("profiles")
       .select("*")
@@ -240,87 +47,219 @@ function App() {
   }
 
 
-  /* -------------------------------------------------------
-     Start monitoring for authenticated user
-     ------------------------------------------------------- */
+  /* ========================================================
+     ACTIVITY
+     ======================================================== */
 
-  async function startMonitoring(user, userProfile) {
-    if (!user?.id) return;
+  async function recordActivity({
+    action,
+    entityType = null,
+    entityId = null,
+    patientId = null,
+    route = null,
+    metadata = {}
+  }) {
+    const userId = session?.user?.id;
 
-    /*
-     * Avoid creating duplicate PRISM sessions if this function
-     * is accidentally called more than once during auth events.
-     */
-    if (prismSessionIdRef.current) {
-      return;
+    if (!userId) return;
+
+    try {
+      const { error } = await db
+        .from("activity_events")
+        .insert({
+          actor_id: userId,
+          session_id: prismSessionIdRef.current || null,
+          action,
+          entity_type: entityType,
+          entity_id: entityId,
+          patient_id: patientId,
+          route,
+          metadata
+        });
+
+      if (error) {
+        console.error(
+          "Activity logging error:",
+          error
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Activity logging exception:",
+        error
+      );
     }
-
-    const sessionId = await startPrismSession(user, userProfile);
-
-    prismSessionIdRef.current = sessionId;
-
-    if (!sessionId) {
-      return;
-    }
-
-    /*
-     * Clear any previous heartbeat timer.
-     */
-    if (heartbeatTimerRef.current) {
-      clearInterval(heartbeatTimerRef.current);
-    }
-
-    /*
-     * Keep the activity session alive while the application
-     * remains open.
-     */
-    heartbeatTimerRef.current = setInterval(() => {
-      heartbeatSession(sessionId);
-    }, HEARTBEAT_INTERVAL);
   }
 
 
-  /* -------------------------------------------------------
-     Stop monitoring
-     ------------------------------------------------------- */
+  /* ========================================================
+     PRISM SESSION
+     ======================================================== */
 
-  async function stopMonitoring(userId) {
-    if (heartbeatTimerRef.current) {
-      clearInterval(heartbeatTimerRef.current);
-      heartbeatTimerRef.current = null;
+  async function startPrismSession(user, userProfile) {
+    if (!user?.id) return null;
+
+    try {
+      const { data, error } = await db
+        .from("user_sessions")
+        .insert({
+          user_id: user.id,
+          role_snapshot:
+            userProfile?.role || "unknown",
+          location_label: "Web",
+          session_type: "web",
+          user_agent:
+            typeof navigator !== "undefined"
+              ? navigator.userAgent
+              : null
+        })
+        .select("id")
+        .single();
+
+      if (error) {
+        console.error(
+          "PRISM session creation error:",
+          error
+        );
+
+        return null;
+      }
+
+      prismSessionIdRef.current = data.id;
+
+      /*
+       * Login activity is optional.
+       * If it fails, it must never stop the application.
+       */
+      try {
+        await db
+          .from("activity_events")
+          .insert({
+            actor_id: user.id,
+            session_id: data.id,
+            action: "login",
+            entity_type: "session",
+            entity_id: data.id,
+            route: "login",
+            metadata: {
+              role:
+                userProfile?.role || "unknown"
+            }
+          });
+      } catch (error) {
+        console.error(
+          "Login activity error:",
+          error
+        );
+      }
+
+      return data.id;
+
+    } catch (error) {
+      console.error(
+        "PRISM session exception:",
+        error
+      );
+
+      return null;
     }
+  }
 
-    await endPrismSession(userId);
+
+  async function heartbeatSession() {
+    const sessionId =
+      prismSessionIdRef.current;
+
+    if (!sessionId) return;
+
+    try {
+      await db
+        .from("user_sessions")
+        .update({
+          last_seen_at:
+            new Date().toISOString()
+        })
+        .eq("id", sessionId)
+        .is("ended_at", null);
+    } catch (error) {
+      console.error(
+        "Heartbeat error:",
+        error
+      );
+    }
+  }
+
+
+  async function endPrismSession() {
+    const sessionId =
+      prismSessionIdRef.current;
+
+    if (!sessionId) return;
+
+    const now =
+      new Date().toISOString();
+
+    try {
+      await db
+        .from("user_sessions")
+        .update({
+          ended_at: now,
+          last_seen_at: now
+        })
+        .eq("id", sessionId)
+        .is("ended_at", null);
+    } catch (error) {
+      console.error(
+        "Session closing error:",
+        error
+      );
+    }
 
     prismSessionIdRef.current = null;
   }
 
 
-  /* -------------------------------------------------------
-     Initial authentication
-     ------------------------------------------------------- */
+  /* ========================================================
+     AUTHENTICATION
+     ======================================================== */
 
   React.useEffect(() => {
     let mounted = true;
 
-    async function loadSession() {
-      const {
-        data: { session: authSession }
-      } = await db.auth.getSession();
+    async function initialize() {
+      try {
+        const {
+          data: {
+            session: currentSession
+          }
+        } = await db.auth.getSession();
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      setSession(authSession);
+        setSession(currentSession);
 
-      if (authSession?.user) {
-        const userProfile = await loadProfile(authSession.user.id);
+        if (currentSession?.user) {
+          const userProfile =
+            await loadProfile(
+              currentSession.user.id
+            );
 
-        if (mounted) {
-          await startMonitoring(
-            authSession.user,
+          if (
+            mounted &&
             userProfile
-          );
+          ) {
+            await startPrismSession(
+              currentSession.user,
+              userProfile
+            );
+          }
         }
+
+      } catch (error) {
+        console.error(
+          "PRISM initialization error:",
+          error
+        );
       }
 
       if (mounted) {
@@ -328,39 +267,51 @@ function App() {
       }
     }
 
-    loadSession();
+    initialize();
 
-    /*
-     * Listen for Supabase authentication changes.
-     */
+
     const {
-      data: { subscription }
+      data: {
+        subscription
+      }
     } = db.auth.onAuthStateChange(
-      async (_event, newSession) => {
-        if (!mounted) return;
+      (event, newSession) => {
 
-        setSession(newSession);
+        /*
+         * Do not perform large async Supabase
+         * operations directly inside the auth callback.
+         */
+        setTimeout(async () => {
 
-        if (newSession?.user) {
-          const userProfile = await loadProfile(
-            newSession.user.id
-          );
+          if (!mounted) return;
 
-          if (mounted) {
-            await startMonitoring(
+          setSession(newSession);
+
+          if (!newSession?.user) {
+            setProfile(null);
+            return;
+          }
+
+          const userProfile =
+            await loadProfile(
+              newSession.user.id
+            );
+
+          if (
+            mounted &&
+            userProfile &&
+            !prismSessionIdRef.current
+          ) {
+            await startPrismSession(
               newSession.user,
               userProfile
             );
           }
-        } else {
-          setProfile(null);
-        }
 
-        if (mounted) {
-          setLoading(false);
-        }
+        }, 0);
       }
     );
+
 
     return () => {
       mounted = false;
@@ -368,55 +319,107 @@ function App() {
       subscription.unsubscribe();
 
       if (heartbeatTimerRef.current) {
-        clearInterval(heartbeatTimerRef.current);
+        clearInterval(
+          heartbeatTimerRef.current
+        );
+
+        heartbeatTimerRef.current = null;
       }
     };
+
   }, []);
 
 
-  /* -------------------------------------------------------
-     Load patients
-     ------------------------------------------------------- */
+  /* ========================================================
+     HEARTBEAT
+     ======================================================== */
+
+  React.useEffect(() => {
+    if (!session?.user) return;
+
+    if (heartbeatTimerRef.current) {
+      clearInterval(
+        heartbeatTimerRef.current
+      );
+    }
+
+    heartbeatTimerRef.current =
+      setInterval(
+        heartbeatSession,
+        60 * 1000
+      );
+
+    return () => {
+      if (heartbeatTimerRef.current) {
+        clearInterval(
+          heartbeatTimerRef.current
+        );
+
+        heartbeatTimerRef.current = null;
+      }
+    };
+
+  }, [session]);
+
+
+  /* ========================================================
+     PATIENTS
+     ======================================================== */
 
   async function loadPatients() {
     if (!session?.user) return;
 
     setLoading(true);
 
-    const { data, error } = await db
-      .from("patients")
-      .select(`
-        *,
-        admissions (
-          id,
-          admission_datetime,
-          discharge_datetime,
-          status,
-          ward_id,
-          bed_id,
-          responsible_mo_id,
-          specialist_id,
-          reason_for_admission,
-          brief_summary,
-          working_diagnosis
-        )
-      `)
-      .order("created_at", {
-        ascending: false
-      });
+    try {
+      const { data, error } =
+        await db
+          .from("patients")
+          .select(`
+            *,
+            admissions (
+              id,
+              admission_datetime,
+              discharge_datetime,
+              status,
+              ward_id,
+              bed_id,
+              responsible_mo_id,
+              specialist_id,
+              reason_for_admission,
+              brief_summary,
+              working_diagnosis
+            )
+          `)
+          .order(
+            "created_at",
+            {
+              ascending: false
+            }
+          );
 
-    if (error) {
+      if (error) {
+        console.error(
+          "Patients loading error:",
+          error
+        );
+
+        setPatients([]);
+      } else {
+        setPatients(data || []);
+      }
+
+    } catch (error) {
       console.error(
-        "Patients loading error:",
+        "Patients loading exception:",
         error
       );
 
       setPatients([]);
-    } else {
-      setPatients(data || []);
-    }
 
-    setLoading(false);
+    } finally {
+      setLoading(false);
+    }
   }
 
 
@@ -427,9 +430,9 @@ function App() {
   }, [session]);
 
 
-  /* -------------------------------------------------------
-     Navigation
-     ------------------------------------------------------- */
+  /* ========================================================
+     NAVIGATION
+     ======================================================== */
 
   async function openPatient(patientId) {
     if (!patientId) return;
@@ -438,8 +441,6 @@ function App() {
     setPage("patient");
 
     await recordActivity({
-      userId: session?.user?.id,
-      sessionId: prismSessionIdRef.current,
       action: "view_patient",
       entityType: "patient",
       entityId: patientId,
@@ -454,8 +455,6 @@ function App() {
     setPage(targetPage);
 
     await recordActivity({
-      userId: session?.user?.id,
-      sessionId: prismSessionIdRef.current,
       action: "view_page",
       entityType: "page",
       route: targetPage
@@ -463,14 +462,12 @@ function App() {
   }
 
 
-  /* -------------------------------------------------------
-     Logout
-     ------------------------------------------------------- */
+  /* ========================================================
+     LOGOUT
+     ======================================================== */
 
   async function logout() {
-    const userId = session?.user?.id;
-
-    await stopMonitoring(userId);
+    await endPrismSession();
 
     await db.auth.signOut();
 
@@ -482,9 +479,9 @@ function App() {
   }
 
 
-  /* -------------------------------------------------------
-     Loading
-     ------------------------------------------------------- */
+  /* ========================================================
+     LOADING SCREEN
+     ======================================================== */
 
   if (loading && !session) {
     return (
@@ -498,18 +495,18 @@ function App() {
   }
 
 
-  /* -------------------------------------------------------
-     Not authenticated
-     ------------------------------------------------------- */
+  /* ========================================================
+     LOGIN
+     ======================================================== */
 
   if (!session) {
     return <Login />;
   }
 
 
-  /* -------------------------------------------------------
-     Application
-     ------------------------------------------------------- */
+  /* ========================================================
+     APPLICATION
+     ======================================================== */
 
   return (
     <div className="app-shell">
@@ -523,7 +520,8 @@ function App() {
           </div>
 
           <div className="brand-subtitle">
-            Problem-oriented Inpatient Review & Structured Monitoring
+            Problem-oriented Inpatient Review
+            & Structured Monitoring
           </div>
 
         </div>
@@ -534,7 +532,8 @@ function App() {
           <div>
 
             <strong>
-              {profile?.display_name || "User"}
+              {profile?.display_name ||
+                "User"}
             </strong>
 
             <div className="user-role">
@@ -564,7 +563,9 @@ function App() {
               ? "nav-active"
               : ""
           }
-          onClick={() => navigate("dashboard")}
+          onClick={() =>
+            navigate("dashboard")
+          }
         >
           Dashboard
         </button>
@@ -576,7 +577,9 @@ function App() {
               ? "nav-active"
               : ""
           }
-          onClick={() => navigate("patients")}
+          onClick={() =>
+            navigate("patients")
+          }
         >
           Patients
         </button>
@@ -589,7 +592,9 @@ function App() {
               : ""
           }
           onClick={() =>
-            navigate("specialist-queue")
+            navigate(
+              "specialist-queue"
+            )
           }
         >
           Consultant Queue
@@ -604,7 +609,9 @@ function App() {
                 : ""
             }
             onClick={() =>
-              navigate("administration")
+              navigate(
+                "administration"
+              )
             }
           >
             Administration
@@ -638,7 +645,9 @@ function App() {
         {page === "patient" &&
           selectedPatientId && (
             <Patient
-              patientId={selectedPatientId}
+              patientId={
+                selectedPatientId
+              }
               onBack={() =>
                 navigate("patients")
               }
@@ -665,20 +674,18 @@ function App() {
 }
 
 
-/* =========================================================
+/* ========================================================
    ROOT
-   ========================================================= */
+   ======================================================== */
 
 const rootElement =
   document.getElementById("root");
-
 
 if (!rootElement) {
   throw new Error(
     "PRISM root element not found."
   );
 }
-
 
 createRoot(rootElement).render(
   <App />
