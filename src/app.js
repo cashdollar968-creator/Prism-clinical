@@ -18,6 +18,11 @@ import Administration from "./pages/Administration.js";
 
 const h = React.createElement;
 
+
+/* =========================================================
+   APP
+========================================================= */
+
 function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -33,9 +38,10 @@ function App() {
 
   const [sessionId, setSessionId] = useState(null);
 
-  /* ---------------------------------------------
+
+  /* =======================================================
      PROFILE
-  --------------------------------------------- */
+  ======================================================= */
 
   const loadProfile = useCallback(async (userId) => {
     if (!userId) {
@@ -56,12 +62,14 @@ function App() {
     }
 
     setProfile(data || null);
+
     return data || null;
   }, []);
 
-  /* ---------------------------------------------
+
+  /* =======================================================
      ACTIVITY MONITORING
-  --------------------------------------------- */
+  ======================================================= */
 
   const recordActivity = useCallback(
     async (
@@ -74,40 +82,51 @@ function App() {
         metadata = {}
       } = {}
     ) => {
-      if (!session?.user?.id) return;
+      if (!session?.user?.id) {
+        return;
+      }
 
       try {
-        await db.from("activity_events").insert({
-          actor_id: session.user.id,
-          session_id: sessionId,
-          action,
-          entity_type: entityType,
-          entity_id: entityId,
-          patient_id: patientId,
-          route,
-          metadata
-        });
+        await db
+          .from("activity_events")
+          .insert({
+            actor_id: session.user.id,
+            session_id: sessionId,
+            action,
+            entity_type: entityType,
+            entity_id: entityId,
+            patient_id: patientId,
+            route,
+            metadata
+          });
       } catch (error) {
-        console.error("Activity recording error:", error);
+        console.error(
+          "Activity recording error:",
+          error
+        );
       }
     },
     [session, sessionId]
   );
 
-  /* ---------------------------------------------
+
+  /* =======================================================
      PRISM SESSION
-  --------------------------------------------- */
+  ======================================================= */
 
   const startPrismSession = useCallback(
     async (user, userProfile) => {
-      if (!user?.id) return null;
+      if (!user?.id) {
+        return null;
+      }
 
       try {
         const { data, error } = await db
           .from("user_sessions")
           .insert({
             user_id: user.id,
-            role_snapshot: userProfile?.role || "unknown",
+            role_snapshot:
+              userProfile?.role || "unknown",
             location_label: "Web",
             session_type: "web",
             user_agent: navigator.userAgent,
@@ -119,7 +138,11 @@ function App() {
           .single();
 
         if (error) {
-          console.error("Session start error:", error);
+          console.error(
+            "Session start error:",
+            error
+          );
+
           return null;
         }
 
@@ -127,143 +150,218 @@ function App() {
 
         return data?.id || null;
       } catch (error) {
-        console.error("Session start exception:", error);
+        console.error(
+          "Session start exception:",
+          error
+        );
+
         return null;
       }
     },
     []
   );
 
-  const heartbeatSession = useCallback(async () => {
-    if (!sessionId) return;
 
-    try {
-      await db
-        .from("user_sessions")
-        .update({
-          last_seen_at: new Date().toISOString()
-        })
-        .eq("id", sessionId);
-    } catch (error) {
-      console.error("Session heartbeat error:", error);
-    }
-  }, [sessionId]);
-
-  const endPrismSession = useCallback(async () => {
-    if (!sessionId) return;
-
-    try {
-      await db
-        .from("user_sessions")
-        .update({
-          ended_at: new Date().toISOString(),
-          last_seen_at: new Date().toISOString()
-        })
-        .eq("id", sessionId);
-    } catch (error) {
-      console.error("Session end error:", error);
-    }
-
-    setSessionId(null);
-  }, [sessionId]);
-
-  /* ---------------------------------------------
-     LOAD PATIENTS
-  --------------------------------------------- */
-
-  const loadPatients = useCallback(async () => {
-    setPatientsLoading(true);
-
-    try {
-      const { data: patientRows, error: patientError } = await db
-        .from("patients")
-        .select("*")
-        .order("created_at", {
-          ascending: false
-        });
-
-      if (patientError) {
-        console.error("Patients loading error:", patientError);
-        setPatients([]);
-        setActiveAdmissions([]);
+  const heartbeatSession = useCallback(
+    async () => {
+      if (!sessionId) {
         return;
       }
 
-      const rows = patientRows || [];
-
-      if (!rows.length) {
-        setPatients([]);
-        setActiveAdmissions([]);
-        return;
-      }
-
-      const patientIds = rows.map((patient) => patient.id);
-
-      const { data: admissions, error: admissionError } = await db
-        .from("admissions")
-        .select("*")
-        .in("patient_id", patientIds)
-        .order("admission_datetime", {
-          ascending: false
-        });
-
-      if (admissionError) {
+      try {
+        await db
+          .from("user_sessions")
+          .update({
+            last_seen_at:
+              new Date().toISOString()
+          })
+          .eq("id", sessionId);
+      } catch (error) {
         console.error(
-          "Admissions loading error:",
-          admissionError
+          "Session heartbeat error:",
+          error
+        );
+      }
+    },
+    [sessionId]
+  );
+
+
+  const endPrismSession = useCallback(
+    async () => {
+      if (!sessionId) {
+        return;
+      }
+
+      try {
+        await db
+          .from("user_sessions")
+          .update({
+            ended_at:
+              new Date().toISOString(),
+            last_seen_at:
+              new Date().toISOString()
+          })
+          .eq("id", sessionId);
+      } catch (error) {
+        console.error(
+          "Session end error:",
+          error
         );
       }
 
-      const admissionRows = admissions || [];
+      setSessionId(null);
+    },
+    [sessionId]
+  );
 
-      const enrichedPatients = rows.map((patient) => {
-        const patientAdmissions = admissionRows.filter(
-          (admission) =>
-            admission.patient_id === patient.id
+
+  /* =======================================================
+     LOAD PATIENTS
+  ======================================================= */
+
+  const loadPatients = useCallback(
+    async () => {
+      setPatientsLoading(true);
+
+      try {
+        const {
+          data: patientRows,
+          error: patientError
+        } = await db
+          .from("patients")
+          .select("*")
+          .order("created_at", {
+            ascending: false
+          });
+
+        if (patientError) {
+          console.error(
+            "Patients loading error:",
+            patientError
+          );
+
+          setPatients([]);
+          setActiveAdmissions([]);
+
+          return;
+        }
+
+        const rows = patientRows || [];
+
+        if (!rows.length) {
+          setPatients([]);
+          setActiveAdmissions([]);
+
+          return;
+        }
+
+        const patientIds = rows.map(
+          (patient) => patient.id
         );
 
-        const activeAdmission =
-          patientAdmissions.find(
-            (admission) =>
-              admission.status === "active"
-          ) || null;
+        const {
+          data: admissions,
+          error: admissionError
+        } = await db
+          .from("admissions")
+          .select("*")
+          .in("patient_id", patientIds)
+          .order("admission_datetime", {
+            ascending: false
+          });
 
-        return {
-          ...patient,
-          admissions: patientAdmissions,
-          activeAdmission
-        };
-      });
+        if (admissionError) {
+          console.error(
+            "Admissions loading error:",
+            admissionError
+          );
+        }
 
-      setPatients(enrichedPatients);
+        const admissionRows =
+          admissions || [];
 
-      setActiveAdmissions(
-        enrichedPatients
-          .filter(
-            (patient) =>
-              patient.activeAdmission
-          )
-          .map((patient) => ({
-            ...patient.activeAdmission,
-            patient
-          }))
-      );
-    } catch (error) {
-      console.error(
-        "Unexpected patients loading error:",
-        error
-      );
 
-      setPatients([]);
-      setActiveAdmissions([]);
-    } finally {
-      setPatientsLoading(false);
-    }
-  }, []);
+        /* -----------------------------------------------
+           Build patient objects
+        ------------------------------------------------ */
 
-  /* ---------------------------------------------
+        const enrichedPatients =
+          rows.map((patient) => {
+            const patientAdmissions =
+              admissionRows.filter(
+                (admission) =>
+                  admission.patient_id ===
+                  patient.id
+              );
+
+            const activeAdmission =
+              patientAdmissions.find(
+                (admission) =>
+                  admission.status ===
+                  "active"
+              ) || null;
+
+            return {
+              ...patient,
+
+              admissions:
+                patientAdmissions,
+
+              activeAdmission
+            };
+          });
+
+
+        setPatients(enrichedPatients);
+
+
+        /* -----------------------------------------------
+           Dashboard / Specialist compatible structure
+
+           IMPORTANT:
+           Dashboard expects:
+
+           {
+             patient,
+             admission
+           }
+
+           so we deliberately create that structure.
+        ------------------------------------------------ */
+
+        setActiveAdmissions(
+          enrichedPatients
+            .filter(
+              (patient) =>
+                !!patient.activeAdmission
+            )
+            .map((patient) => ({
+              patient,
+
+              admission:
+                patient.activeAdmission
+            }))
+        );
+      } catch (error) {
+        console.error(
+          "Unexpected patients loading error:",
+          error
+        );
+
+        setPatients([]);
+        setActiveAdmissions([]);
+      } finally {
+        setPatientsLoading(false);
+      }
+    },
+    []
+  );
+
+
+  /* =======================================================
      AUTH INITIALIZATION
-  --------------------------------------------- */
+  ======================================================= */
 
   useEffect(() => {
     let mounted = true;
@@ -273,10 +371,14 @@ function App() {
 
       try {
         const {
-          data: { session: currentSession }
+          data: {
+            session: currentSession
+          }
         } = await db.auth.getSession();
 
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
 
         if (currentSession) {
           setSession(currentSession);
@@ -286,7 +388,9 @@ function App() {
               currentSession.user.id
             );
 
-          if (!mounted) return;
+          if (!mounted) {
+            return;
+          }
 
           await startPrismSession(
             currentSession.user,
@@ -310,24 +414,36 @@ function App() {
       }
     }
 
+
     initializeAuth();
 
-    const {
-      data: { subscription }
-    } = db.auth.onAuthStateChange(
-      async (event, newSession) => {
-        if (!mounted) return;
 
-        if (event === "SIGNED_IN") {
+    const {
+      data: {
+        subscription
+      }
+    } = db.auth.onAuthStateChange(
+      async (
+        event,
+        newSession
+      ) => {
+        if (!mounted) {
+          return;
+        }
+
+        if (
+          event === "SIGNED_IN" &&
+          newSession
+        ) {
           setSession(newSession);
 
           const currentProfile =
             await loadProfile(
-              newSession?.user?.id
+              newSession.user.id
             );
 
           await startPrismSession(
-            newSession?.user,
+            newSession.user,
             currentProfile
           );
 
@@ -336,20 +452,28 @@ function App() {
           setPage("dashboard");
         }
 
-        if (event === "SIGNED_OUT") {
+
+        if (
+          event === "SIGNED_OUT"
+        ) {
           setSession(null);
           setProfile(null);
+
           setPatients([]);
           setActiveAdmissions([]);
+
           setSelectedPatientId(null);
           setSessionId(null);
+
           setPage("dashboard");
         }
       }
     );
 
+
     return () => {
       mounted = false;
+
       subscription.unsubscribe();
     };
   }, [
@@ -358,19 +482,23 @@ function App() {
     loadPatients
   ]);
 
-  /* ---------------------------------------------
+
+  /* =======================================================
      SESSION HEARTBEAT
-  --------------------------------------------- */
+  ======================================================= */
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      return;
+    }
 
     heartbeatSession();
 
-    const interval = setInterval(
-      heartbeatSession,
-      60000
-    );
+    const interval =
+      setInterval(
+        heartbeatSession,
+        60000
+      );
 
     return () => {
       clearInterval(interval);
@@ -380,24 +508,25 @@ function App() {
     heartbeatSession
   ]);
 
-  /* ---------------------------------------------
+
+  /* =======================================================
      NAVIGATION
-  --------------------------------------------- */
+  ======================================================= */
 
   const navigate = useCallback(
     async (targetPage) => {
       setPage(targetPage);
 
-      if (targetPage === "patients") {
-        await loadPatients();
-      }
-
-      if (targetPage === "dashboard") {
+      if (
+        targetPage === "patients" ||
+        targetPage === "dashboard"
+      ) {
         await loadPatients();
       }
     },
     [loadPatients]
   );
+
 
   const openPatient = useCallback(
     async (patientOrId) => {
@@ -410,10 +539,12 @@ function App() {
         console.error(
           "Cannot open patient: missing patient ID"
         );
+
         return;
       }
 
       setSelectedPatientId(patientId);
+
       setPage("patient");
 
       await recordActivity(
@@ -429,131 +560,161 @@ function App() {
     [recordActivity]
   );
 
-  /* ---------------------------------------------
+
+  /* =======================================================
      LOGOUT
-  --------------------------------------------- */
+  ======================================================= */
 
-  const logout = useCallback(async () => {
-    try {
-      await endPrismSession();
-
-      await db.auth.signOut();
-
-      setSession(null);
-      setProfile(null);
-      setPatients([]);
-      setActiveAdmissions([]);
-      setSelectedPatientId(null);
-      setPage("dashboard");
-    } catch (error) {
-      console.error(
-        "Logout error:",
-        error
-      );
-    }
-  }, [endPrismSession]);
-
-  /* ---------------------------------------------
-     LOGIN
-  --------------------------------------------- */
-
-  const handleLogin = useCallback(
+  const logout = useCallback(
     async () => {
-      const {
-        data: { session: newSession }
-      } = await db.auth.getSession();
+      try {
+        await endPrismSession();
 
-      if (!newSession) return;
+        await db.auth.signOut();
 
-      setSession(newSession);
+        setSession(null);
+        setProfile(null);
 
-      const currentProfile =
-        await loadProfile(
-          newSession.user.id
+        setPatients([]);
+        setActiveAdmissions([]);
+
+        setSelectedPatientId(null);
+        setPage("dashboard");
+      } catch (error) {
+        console.error(
+          "Logout error:",
+          error
+        );
+      }
+    },
+    [endPrismSession]
+  );
+
+
+  /* =======================================================
+     LOGIN CALLBACK
+  ======================================================= */
+
+  const handleLogin =
+    useCallback(
+      async () => {
+        const {
+          data: {
+            session: newSession
+          }
+        } =
+          await db.auth.getSession();
+
+        if (!newSession) {
+          return;
+        }
+
+        setSession(newSession);
+
+        const currentProfile =
+          await loadProfile(
+            newSession.user.id
+          );
+
+        await startPrismSession(
+          newSession.user,
+          currentProfile
         );
 
-      await startPrismSession(
-        newSession.user,
-        currentProfile
-      );
+        await loadPatients();
 
-      await loadPatients();
+        setPage("dashboard");
+      },
+      [
+        loadProfile,
+        startPrismSession,
+        loadPatients
+      ]
+    );
 
-      setPage("dashboard");
-    },
-    [
-      loadProfile,
-      startPrismSession,
-      loadPatients
-    ]
-  );
 
-  /* ---------------------------------------------
+  /* =======================================================
      COMMON PROPS
-  --------------------------------------------- */
+  ======================================================= */
 
-  const commonProps = useMemo(
-    () => ({
-      session,
-      profile,
+  const commonProps =
+    useMemo(
+      () => ({
+        session,
+        profile,
 
-      patients,
-      setPatients,
+        patients,
+        setPatients,
 
-      activeAdmissions,
+        activeAdmissions,
 
-      loading: patientsLoading,
-      patientsLoading,
+        loading:
+          patientsLoading,
 
-      onRefresh: loadPatients,
+        patientsLoading,
 
-      onNavigate: navigate,
-      onOpenPatient: openPatient,
+        onRefresh:
+          loadPatients,
 
-      onLogout: logout,
+        onNavigate:
+          navigate,
 
-      recordActivity
-    }),
-    [
-      session,
-      profile,
-      patients,
-      activeAdmissions,
-      patientsLoading,
-      loadPatients,
-      navigate,
-      openPatient,
-      logout,
-      recordActivity
-    ]
-  );
+        onOpenPatient:
+          openPatient,
 
-  /* ---------------------------------------------
+        onLogout:
+          logout,
+
+        recordActivity
+      }),
+      [
+        session,
+        profile,
+        patients,
+        activeAdmissions,
+        patientsLoading,
+        loadPatients,
+        navigate,
+        openPatient,
+        logout,
+        recordActivity
+      ]
+    );
+
+
+  /* =======================================================
      LOADING SCREEN
-  --------------------------------------------- */
+  ======================================================= */
 
   if (loading) {
     return h(
       "div",
       {
-        className: "prism-loading-screen"
+        className:
+          "prism-loading-screen"
       },
+
       h(
         "div",
         {
-          className: "prism-loading-card"
+          className:
+            "prism-loading-card"
         },
+
         h(
           "div",
           {
-            className: "prism-loading-title"
+            className:
+              "prism-loading-title"
           },
           "PRISM"
         ),
+
         h(
           "div",
           {
-            className: "prism-loading-text"
+            className:
+              "prism-loading-text"
           },
           "Loading clinical workspace..."
         )
@@ -561,73 +722,260 @@ function App() {
     );
   }
 
-  /* ---------------------------------------------
+
+  /* =======================================================
      LOGIN
-  --------------------------------------------- */
+  ======================================================= */
 
   if (!session) {
     return h(Login, {
-      onLogin: handleLogin
+      onLogin:
+        handleLogin
     });
   }
 
-  /* ---------------------------------------------
-     PAGE ROUTING
-  --------------------------------------------- */
 
-  if (page === "dashboard") {
-    return h(
-      Dashboard,
-      commonProps
-    );
-  }
+  /* =======================================================
+     APPLICATION SHELL
+  ======================================================= */
 
-  if (page === "patients") {
+  function navButton(
+    target,
+    label
+  ) {
     return h(
-      Patients,
-      commonProps
-    );
-  }
-
-  if (page === "patient") {
-    return h(
-      Patient,
+      "button",
       {
-        session,
-        profile,
-        patientId: selectedPatientId,
-        onNavigate: navigate,
-        recordActivity
-      }
+        type: "button",
+
+        className:
+          "nav-btn" +
+          (
+            page === target
+              ? " active"
+              : ""
+          ),
+
+        onClick: () =>
+          navigate(target)
+      },
+
+      label
     );
   }
 
-  if (page === "specialist") {
-    return h(
-      SpecialistQueue,
-      commonProps
-    );
-  }
 
-  if (page === "administration") {
-    return h(
-      Administration,
-      commonProps
-    );
-  }
+  const displayName =
+    profile?.display_name ||
+    profile?.full_name ||
+    profile?.email ||
+    session?.user?.email ||
+    "User";
+
+
+  const role =
+    profile?.role ||
+    "medical_officer";
+
 
   return h(
-    Dashboard,
-    commonProps
+    React.Fragment,
+    null,
+
+
+    /* =====================================================
+       TOP BAR
+    ===================================================== */
+
+    h(
+      "header",
+      {
+        className:
+          "topbar"
+      },
+
+      h(
+        "div",
+        {
+          className:
+            "topbar-left"
+        },
+
+        h(
+          "div",
+          {
+            className:
+              "topbar-title"
+          },
+          "PRISM"
+        ),
+
+        h(
+          "div",
+          {
+            className:
+              "role-badge"
+          },
+          role
+        )
+      ),
+
+
+      h(
+        "div",
+        {
+          className:
+            "topbar-right"
+        },
+
+        h(
+          "span",
+          {
+            className:
+              "small muted"
+          },
+          displayName
+        ),
+
+        h(
+          "button",
+          {
+            type: "button",
+            className:
+              "btn btn-secondary",
+            onClick:
+              logout
+          },
+          "Logout"
+        )
+      )
+    ),
+
+
+    /* =====================================================
+       MAIN LAYOUT
+    ===================================================== */
+
+    h(
+      "div",
+      {
+        className:
+          "layout"
+      },
+
+
+      /* ===================================================
+         SIDEBAR
+      =================================================== */
+
+      h(
+        "aside",
+        {
+          className:
+            "sidebar"
+        },
+
+        h(
+          "div",
+          {
+            className:
+              "section-title"
+          },
+          "Clinical Workspace"
+        ),
+
+        navButton(
+          "dashboard",
+          "Dashboard"
+        ),
+
+        navButton(
+          "patients",
+          "Patients"
+        ),
+
+        navButton(
+          "specialist",
+          "Specialist Queue"
+        ),
+
+        profile?.role === "admin"
+          ? navButton(
+              "administration",
+              "Administration"
+            )
+          : null
+      ),
+
+
+      /* ===================================================
+         CONTENT
+      =================================================== */
+
+      h(
+        "main",
+        {
+          className:
+            "content"
+        },
+
+        page === "dashboard"
+          ? h(
+              Dashboard,
+              commonProps
+            )
+
+          : page === "patients"
+            ? h(
+                Patients,
+                commonProps
+              )
+
+            : page === "patient"
+              ? h(
+                  Patient,
+                  {
+                    session,
+                    profile,
+                    patientId:
+                      selectedPatientId,
+                    onNavigate:
+                      navigate,
+                    recordActivity
+                  }
+                )
+
+              : page === "specialist"
+                ? h(
+                    SpecialistQueue,
+                    commonProps
+                  )
+
+                : page === "administration"
+                  ? h(
+                      Administration,
+                      commonProps
+                    )
+
+                  : h(
+                      Dashboard,
+                      commonProps
+                    )
+      )
+    )
   );
 }
 
-/* ---------------------------------------------
+
+/* =========================================================
    MOUNT
---------------------------------------------- */
+========================================================= */
 
 const rootElement =
-  document.getElementById("root");
+  document.getElementById(
+    "root"
+  );
+
 
 if (!rootElement) {
   throw new Error(
@@ -635,6 +983,9 @@ if (!rootElement) {
   );
 }
 
-createRoot(rootElement).render(
+
+createRoot(
+  rootElement
+).render(
   h(App)
 );
