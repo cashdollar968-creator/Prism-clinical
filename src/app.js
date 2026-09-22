@@ -10,7 +10,6 @@ import {
 } from "https://esm.sh/react-dom@18.3.1/client";
 
 import { db } from "./supabase.js";
-
 import Login from "./pages/Login.js";
 
 const h = React.createElement;
@@ -20,7 +19,11 @@ const h = React.createElement;
    SAFE ERROR SCREEN
 ===================================================== */
 
-function ErrorScreen({ title, error, onRetry }) {
+function ErrorScreen({
+  title,
+  error,
+  onRetry,
+}) {
   return h(
     "div",
     {
@@ -28,8 +31,7 @@ function ErrorScreen({ title, error, onRetry }) {
         minHeight: "100vh",
         padding: "24px",
         background: "#f8fafc",
-        fontFamily:
-          "Arial, sans-serif",
+        fontFamily: "Arial, sans-serif",
       },
     },
 
@@ -39,12 +41,10 @@ function ErrorScreen({ title, error, onRetry }) {
         style: {
           maxWidth: "800px",
           margin: "40px auto",
-          background: "#ffffff",
+          background: "#fff",
           border: "1px solid #e2e8f0",
           borderRadius: "12px",
           padding: "24px",
-          boxShadow:
-            "0 4px 20px rgba(0,0,0,0.06)",
         },
       },
 
@@ -64,6 +64,7 @@ function ErrorScreen({ title, error, onRetry }) {
         {
           style: {
             color: "#475569",
+            whiteSpace: "pre-wrap",
           },
         },
         error?.message ||
@@ -79,12 +80,10 @@ function ErrorScreen({ title, error, onRetry }) {
               onClick: onRetry,
               style: {
                 marginTop: "12px",
-                padding:
-                  "10px 16px",
+                padding: "10px 16px",
                 border: 0,
                 borderRadius: "8px",
-                background:
-                  "#0f766e",
+                background: "#0f766e",
                 color: "#fff",
                 cursor: "pointer",
               },
@@ -113,8 +112,7 @@ function LoadingScreen({
         alignItems: "center",
         justifyContent: "center",
         background: "#f8fafc",
-        fontFamily:
-          "Arial, sans-serif",
+        fontFamily: "Arial, sans-serif",
       },
     },
 
@@ -134,8 +132,7 @@ function LoadingScreen({
             fontSize: "28px",
             fontWeight: "700",
             color: "#0f766e",
-            marginBottom:
-              "10px",
+            marginBottom: "10px",
           },
         },
         "PRISM"
@@ -155,9 +152,7 @@ function LoadingScreen({
    PAGE LOADER
 ===================================================== */
 
-async function loadPage(
-  pageName
-) {
+async function loadPage(pageName) {
   switch (pageName) {
     case "dashboard":
       return (
@@ -308,9 +303,7 @@ function App() {
           );
         }
 
-        setProfile(
-          data || null
-        );
+        setProfile(data || null);
 
         return data || null;
       },
@@ -325,25 +318,39 @@ function App() {
   const loadClinicalContext =
     useCallback(
       async () => {
-        const {
-          data,
-          error,
-        } = await db.rpc(
-          "prism_get_my_clinical_context"
-        );
+        try {
+          const {
+            data,
+            error,
+          } = await db.rpc(
+            "prism_get_my_clinical_context"
+          );
 
-        if (error) {
-          throw new Error(
-            error.message ||
+          if (error) {
+            throw new Error(
+              error.message ||
+                "Unable to load clinical context."
+            );
+          }
+
+          setClinicalContext(
+            data || null
+          );
+
+          return data || null;
+        } catch (error) {
+          console.error(
+            "Clinical context error:",
+            error
+          );
+
+          setDataError(
+            error?.message ||
               "Unable to load clinical context."
           );
+
+          return null;
         }
-
-        setClinicalContext(
-          data || null
-        );
-
-        return data || null;
       },
       []
     );
@@ -566,16 +573,10 @@ function App() {
           );
 
           if (error) {
-            console.error(
-              "Specialist queue:",
-              error
+            throw new Error(
+              error.message ||
+                "Unable to load specialist queue."
             );
-
-            setSpecialistQueue(
-              []
-            );
-
-            return [];
           }
 
           const rows =
@@ -590,13 +591,11 @@ function App() {
           return rows;
         } catch (error) {
           console.error(
-            "Specialist queue:",
+            "Specialist queue error:",
             error
           );
 
-          setSpecialistQueue(
-            []
-          );
+          setSpecialistQueue([]);
 
           return [];
         }
@@ -606,32 +605,21 @@ function App() {
 
 
   /* ===================================================
-     WORKSPACE
+     WORKSPACE DATA
+     
+     IMPORTANT:
+     These operations are deliberately
+     independent from the Dashboard render.
   =================================================== */
 
-  const loadWorkspace =
+  const loadWorkspaceData =
     useCallback(
       async () => {
-        setDataError("");
-
-        try {
-          await loadClinicalContext();
-
-          await Promise.all([
-            loadPatients(),
-            loadSpecialistQueue(),
-          ]);
-        } catch (error) {
-          console.error(
-            "Workspace error:",
-            error
-          );
-
-          setDataError(
-            error?.message ||
-              "Unable to load PRISM workspace."
-          );
-        }
+        await Promise.allSettled([
+          loadClinicalContext(),
+          loadPatients(),
+          loadSpecialistQueue(),
+        ]);
       },
       [
         loadClinicalContext,
@@ -642,7 +630,7 @@ function App() {
 
 
   /* ===================================================
-     SESSION
+     SESSION LOGGING
   =================================================== */
 
   const startSession =
@@ -652,7 +640,7 @@ function App() {
         userProfile
       ) => {
         if (!user?.id) {
-          return;
+          return null;
         }
 
         try {
@@ -694,18 +682,23 @@ function App() {
               error
             );
 
-            return;
+            return null;
           }
 
           setSessionId(
             data?.id ||
               null
           );
+
+          return data?.id ||
+            null;
         } catch (error) {
           console.error(
             "Session logging error:",
             error
           );
+
+          return null;
         }
       },
       []
@@ -777,7 +770,7 @@ function App() {
 
 
   /* ===================================================
-     LOAD CURRENT PAGE
+     PAGE LOADING
   =================================================== */
 
   const loadCurrentPage =
@@ -831,7 +824,7 @@ function App() {
 
 
   /* ===================================================
-     INITIAL AUTH
+     INITIAL AUTHENTICATION
   =================================================== */
 
   useEffect(() => {
@@ -880,16 +873,37 @@ function App() {
           currentProfile
         );
 
-        await startSession(
+        /*
+         * Load Dashboard FIRST.
+         *
+         * This is the key change.
+         */
+        await loadCurrentPage(
+          "dashboard"
+        );
+
+        if (!mounted) {
+          return;
+        }
+
+        /*
+         * Authentication is complete.
+         * Stop the global loading screen.
+         */
+        setLoading(false);
+
+        /*
+         * Everything below is secondary
+         * workspace data and must not block
+         * Dashboard rendering.
+         */
+        loadWorkspaceData();
+
+        startSession(
           currentSession.user,
           currentProfile
         );
 
-        await loadWorkspace();
-
-        await loadCurrentPage(
-          "dashboard"
-        );
       } catch (error) {
         console.error(
           "PRISM initialization error:",
@@ -901,9 +915,7 @@ function App() {
             error?.message ||
               "Unable to initialize PRISM."
           );
-        }
-      } finally {
-        if (mounted) {
+
           setLoading(false);
         }
       }
@@ -940,34 +952,58 @@ function App() {
                   newSession.user.id
                 );
 
+              if (!mounted) {
+                return;
+              }
+
               setProfile(
                 currentProfile
               );
 
-              await startSession(
-                newSession.user,
-                currentProfile
+              /*
+               * Open Dashboard immediately.
+               */
+              await loadCurrentPage(
+                "dashboard"
               );
 
-              await loadWorkspace();
+              if (!mounted) {
+                return;
+              }
 
               setPage(
                 "dashboard"
               );
 
-              await loadCurrentPage(
-                "dashboard"
+              setLoading(
+                false
               );
+
+              /*
+               * Load secondary data
+               * without blocking UI.
+               */
+              loadWorkspaceData();
+
+              startSession(
+                newSession.user,
+                currentProfile
+              );
+
             } catch (error) {
               console.error(
                 "Post-login error:",
                 error
               );
 
-              setDataError(
-                error?.message ||
-                  "Unable to open PRISM after login."
-              );
+              if (mounted) {
+                setDataError(
+                  error?.message ||
+                    "Unable to open PRISM after login."
+                );
+
+                setLoading(false);
+              }
             }
           }
 
@@ -994,20 +1030,21 @@ function App() {
             setPageComponent(
               null
             );
+
+            setDataError("");
           }
         }
       );
 
     return () => {
       mounted = false;
-
       subscription.unsubscribe();
     };
   }, [
     loadProfile,
-    startSession,
-    loadWorkspace,
     loadCurrentPage,
+    loadWorkspaceData,
+    startSession,
   ]);
 
 
@@ -1024,6 +1061,16 @@ function App() {
           target
         );
 
+        /*
+         * Load the requested page first.
+         */
+        await loadCurrentPage(
+          target
+        );
+
+        /*
+         * Refresh data in background.
+         */
         if (
           target ===
             "dashboard" ||
@@ -1032,16 +1079,12 @@ function App() {
           target ===
             "specialist"
         ) {
-          await loadWorkspace();
+          loadWorkspaceData();
         }
-
-        await loadCurrentPage(
-          target
-        );
       },
       [
-        loadWorkspace,
         loadCurrentPage,
+        loadWorkspaceData,
       ]
     );
 
@@ -1127,6 +1170,12 @@ function App() {
   const handleLogin =
     useCallback(
       async () => {
+        /*
+         * Login.js already performs the
+         * actual authentication.
+         *
+         * We only synchronize the session here.
+         */
         const {
           data: {
             session:
@@ -1153,20 +1202,32 @@ function App() {
             currentProfile
           );
 
-          await startSession(
-            newSession.user,
-            currentProfile
+          /*
+           * Dashboard first.
+           */
+          await loadCurrentPage(
+            "dashboard"
           );
-
-          await loadWorkspace();
 
           setPage(
             "dashboard"
           );
 
-          await loadCurrentPage(
-            "dashboard"
+          setLoading(
+            false
           );
+
+          /*
+           * Secondary operations
+           * happen after the UI opens.
+           */
+          loadWorkspaceData();
+
+          startSession(
+            newSession.user,
+            currentProfile
+          );
+
         } catch (error) {
           console.error(
             "Login workspace error:",
@@ -1177,13 +1238,15 @@ function App() {
             error?.message ||
               "Unable to open workspace."
           );
+
+          setLoading(false);
         }
       },
       [
         loadProfile,
-        startSession,
-        loadWorkspace,
         loadCurrentPage,
+        loadWorkspaceData,
+        startSession,
       ]
     );
 
@@ -1220,7 +1283,7 @@ function App() {
         dataError,
 
         onRefresh:
-          loadWorkspace,
+          loadWorkspaceData,
 
         onNavigate:
           navigate,
@@ -1242,7 +1305,7 @@ function App() {
         specialistQueue,
         loading,
         dataError,
-        loadWorkspace,
+        loadWorkspaceData,
         navigate,
         openPatient,
         logout,
@@ -1252,7 +1315,7 @@ function App() {
 
 
   /* ===================================================
-     LOADING
+     GLOBAL LOADING
   =================================================== */
 
   if (loading) {
@@ -1260,7 +1323,7 @@ function App() {
       LoadingScreen,
       {
         message:
-          "Loading PRISM..."
+          "Loading PRISM...",
       }
     );
   }
@@ -1275,7 +1338,7 @@ function App() {
       Login,
       {
         onLogin:
-          handleLogin
+          handleLogin,
       }
     );
   }
@@ -1291,8 +1354,10 @@ function App() {
       {
         title:
           `Unable to load "${page}"`,
+
         error:
           pageError,
+
         onRetry:
           () =>
             loadCurrentPage(
@@ -1315,7 +1380,7 @@ function App() {
       LoadingScreen,
       {
         message:
-          `Loading ${page}...`
+          `Loading ${page}...`,
       }
     );
   }
@@ -1330,7 +1395,7 @@ function App() {
 
 
   /* ===================================================
-     DISPLAY
+     MAIN UI
   =================================================== */
 
   return h(
@@ -1412,9 +1477,7 @@ function App() {
                 clinicalContext?.unit_name,
             ]
               .filter(Boolean)
-              .join(
-                " · "
-              )
+              .join(" · ")
           )
         ),
 
@@ -1582,14 +1645,17 @@ function App() {
 
         h(
           CurrentPage,
-          commonProps,
-          page ===
+          {
+            ...commonProps,
+
+            ...(page ===
             "patient"
-            ? {
-                patientId:
-                  selectedPatientId,
-              }
-            : null
+              ? {
+                  patientId:
+                    selectedPatientId,
+                }
+              : {}),
+          }
         )
       )
     )
@@ -1608,7 +1674,7 @@ const root =
 
 if (!root) {
   document.body.innerHTML =
-    "<h2 style='padding:20px'>PRISM: root element not found.</h2>";
+    "<h2 style='padding:20px;font-family:Arial'>PRISM: root element not found.</h2>";
 } else {
   try {
     createRoot(
@@ -1645,4 +1711,4 @@ if (!root) {
       message
     );
   }
-  }
+}
