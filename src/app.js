@@ -12,151 +12,407 @@ import {
 import { db } from "./supabase.js";
 
 import Login from "./pages/Login.js";
-import Dashboard from "./pages/Dashboard.js";
-import Patients from "./pages/Patients.js";
-import Patient from "./pages/Patient.js";
-import SpecialistQueue from "./pages/SpecialistQueue.js";
-import Administration from "./pages/Administration.js";
 
 const h = React.createElement;
 
+
+/* =====================================================
+   SAFE ERROR SCREEN
+===================================================== */
+
+function ErrorScreen({ title, error, onRetry }) {
+  return h(
+    "div",
+    {
+      style: {
+        minHeight: "100vh",
+        padding: "24px",
+        background: "#f8fafc",
+        fontFamily:
+          "Arial, sans-serif",
+      },
+    },
+
+    h(
+      "div",
+      {
+        style: {
+          maxWidth: "800px",
+          margin: "40px auto",
+          background: "#ffffff",
+          border: "1px solid #e2e8f0",
+          borderRadius: "12px",
+          padding: "24px",
+          boxShadow:
+            "0 4px 20px rgba(0,0,0,0.06)",
+        },
+      },
+
+      h(
+        "h2",
+        {
+          style: {
+            marginTop: 0,
+            color: "#b91c1c",
+          },
+        },
+        title || "PRISM Error"
+      ),
+
+      h(
+        "p",
+        {
+          style: {
+            color: "#475569",
+          },
+        },
+        error?.message ||
+          String(error) ||
+          "Unknown error"
+      ),
+
+      onRetry
+        ? h(
+            "button",
+            {
+              type: "button",
+              onClick: onRetry,
+              style: {
+                marginTop: "12px",
+                padding:
+                  "10px 16px",
+                border: 0,
+                borderRadius: "8px",
+                background:
+                  "#0f766e",
+                color: "#fff",
+                cursor: "pointer",
+              },
+            },
+            "Retry"
+          )
+        : null
+    )
+  );
+}
+
+
+/* =====================================================
+   LOADING SCREEN
+===================================================== */
+
+function LoadingScreen({
+  message = "Loading PRISM...",
+}) {
+  return h(
+    "div",
+    {
+      style: {
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#f8fafc",
+        fontFamily:
+          "Arial, sans-serif",
+      },
+    },
+
+    h(
+      "div",
+      {
+        style: {
+          textAlign: "center",
+          color: "#334155",
+        },
+      },
+
+      h(
+        "div",
+        {
+          style: {
+            fontSize: "28px",
+            fontWeight: "700",
+            color: "#0f766e",
+            marginBottom:
+              "10px",
+          },
+        },
+        "PRISM"
+      ),
+
+      h(
+        "div",
+        null,
+        message
+      )
+    )
+  );
+}
+
+
+/* =====================================================
+   PAGE LOADER
+===================================================== */
+
+async function loadPage(
+  pageName
+) {
+  switch (pageName) {
+    case "dashboard":
+      return (
+        await import(
+          "./pages/Dashboard.js"
+        )
+      ).default;
+
+    case "patients":
+      return (
+        await import(
+          "./pages/Patients.js"
+        )
+      ).default;
+
+    case "patient":
+      return (
+        await import(
+          "./pages/Patient.js"
+        )
+      ).default;
+
+    case "specialist":
+      return (
+        await import(
+          "./pages/SpecialistQueue.js"
+        )
+      ).default;
+
+    case "administration":
+      return (
+        await import(
+          "./pages/Administration.js"
+        )
+      ).default;
+
+    default:
+      return (
+        await import(
+          "./pages/Dashboard.js"
+        )
+      ).default;
+  }
+}
+
+
+/* =====================================================
+   APP
+===================================================== */
+
 function App() {
-  const [session, setSession] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [clinicalContext, setClinicalContext] = useState(null);
+  const [
+    session,
+    setSession,
+  ] = useState(null);
 
-  const [page, setPage] = useState("dashboard");
-  const [selectedPatientId, setSelectedPatientId] =
-    useState(null);
+  const [
+    profile,
+    setProfile,
+  ] = useState(null);
 
-  const [patients, setPatients] = useState([]);
-  const [activeAdmissions, setActiveAdmissions] =
-    useState([]);
+  const [
+    clinicalContext,
+    setClinicalContext,
+  ] = useState(null);
 
-  const [specialistQueue, setSpecialistQueue] =
-    useState([]);
+  const [
+    page,
+    setPage,
+  ] = useState("dashboard");
 
-  const [loading, setLoading] = useState(true);
-  const [patientsLoading, setPatientsLoading] =
-    useState(false);
+  const [
+    selectedPatientId,
+    setSelectedPatientId,
+  ] = useState(null);
 
-  const [dataError, setDataError] = useState("");
-  const [sessionId, setSessionId] = useState(null);
+  const [
+    patients,
+    setPatients,
+  ] = useState([]);
+
+  const [
+    activeAdmissions,
+    setActiveAdmissions,
+  ] = useState([]);
+
+  const [
+    specialistQueue,
+    setSpecialistQueue,
+  ] = useState([]);
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+  const [
+    pageComponent,
+    setPageComponent,
+  ] = useState(null);
+
+  const [
+    pageLoading,
+    setPageLoading,
+  ] = useState(false);
+
+  const [
+    pageError,
+    setPageError,
+  ] = useState(null);
+
+  const [
+    dataError,
+    setDataError,
+  ] = useState("");
+
+  const [
+    sessionId,
+    setSessionId,
+  ] = useState(null);
 
 
-  /* =====================================================
+  /* ===================================================
      PROFILE
-  ===================================================== */
+  =================================================== */
 
-  const loadProfile = useCallback(
-    async (userId) => {
-      if (!userId) {
-        setProfile(null);
-        return null;
-      }
+  const loadProfile =
+    useCallback(
+      async (userId) => {
+        if (!userId) {
+          setProfile(null);
+          return null;
+        }
 
-      const {
-        data,
-        error,
-      } = await db
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle();
+        const {
+          data,
+          error,
+        } = await db
+          .from("profiles")
+          .select("*")
+          .eq("id", userId)
+          .maybeSingle();
 
-      if (error) {
-        console.error(
-          "Profile loading error:",
-          error
+        if (error) {
+          throw new Error(
+            error.message ||
+              "Unable to load profile."
+          );
+        }
+
+        setProfile(
+          data || null
         );
 
-        setProfile(null);
-        return null;
-      }
-
-      setProfile(data || null);
-      return data || null;
-    },
-    []
-  );
+        return data || null;
+      },
+      []
+    );
 
 
-  /* =====================================================
+  /* ===================================================
      CLINICAL CONTEXT
-  ===================================================== */
+  =================================================== */
 
   const loadClinicalContext =
-    useCallback(async () => {
-      const {
-        data,
-        error,
-      } = await db.rpc(
-        "prism_get_my_clinical_context"
-      );
-
-      if (error) {
-        console.error(
-          "Clinical context error:",
-          error
-        );
-
-        throw new Error(
-          error.message ||
-          "Unable to load clinical context."
-        );
-      }
-
-      setClinicalContext(
-        data || null
-      );
-
-      return data || null;
-    }, []);
-
-
-  /* =====================================================
-     PATIENTS
-  ===================================================== */
-
-  const loadPatients =
-    useCallback(async () => {
-      setPatientsLoading(true);
-      setDataError("");
-
-      try {
+    useCallback(
+      async () => {
         const {
           data,
           error,
         } = await db.rpc(
-          "prism_get_my_patient_list"
+          "prism_get_my_clinical_context"
         );
 
         if (error) {
           throw new Error(
             error.message ||
-            "Unable to load patients."
+              "Unable to load clinical context."
           );
         }
 
-        const rows =
-          Array.isArray(data)
-            ? data
-            : [];
+        setClinicalContext(
+          data || null
+        );
 
-        const patientMap =
-          new Map();
+        return data || null;
+      },
+      []
+    );
 
-        const admissions =
-          rows.map((row) => {
+
+  /* ===================================================
+     PATIENT LIST
+  =================================================== */
+
+  const loadPatients =
+    useCallback(
+      async () => {
+        try {
+          const {
+            data,
+            error,
+          } = await db.rpc(
+            "prism_get_my_patient_list"
+          );
+
+          if (error) {
+            throw new Error(
+              error.message ||
+                "Unable to load patients."
+            );
+          }
+
+          const rows =
+            Array.isArray(data)
+              ? data
+              : [];
+
+          const map =
+            new Map();
+
+          const admissions =
+            [];
+
+          for (const row of rows) {
             const patientId =
               row.patient_id;
+
+            const patient = {
+              id:
+                patientId,
+
+              patient_code:
+                row.patient_code ??
+                null,
+
+              full_name:
+                row.full_name ??
+                null,
+
+              age:
+                row.age ??
+                null,
+
+              sex:
+                row.sex ??
+                null,
+            };
 
             const admission = {
               id:
                 row.admission_id,
 
               patient_id:
-                row.patient_id,
+                patientId,
 
               ward_id:
                 row.ward_id ??
@@ -211,44 +467,24 @@ function App() {
                 null,
             };
 
-            const patient = {
-              id:
-                patientId,
-
-              patient_code:
-                row.patient_code ??
-                null,
-
-              full_name:
-                row.full_name ??
-                null,
-
-              age:
-                row.age ??
-                null,
-
-              sex:
-                row.sex ??
-                null,
-            };
-
             if (
-              !patientMap.has(
+              !map.has(
                 patientId
               )
             ) {
-              patientMap.set(
+              map.set(
                 patientId,
                 {
                   ...patient,
                   admissions: [],
-                  activeAdmission: null,
+                  activeAdmission:
+                    null,
                 }
               );
             }
 
             const entry =
-              patientMap.get(
+              map.get(
                 patientId
               );
 
@@ -264,138 +500,150 @@ function App() {
                 admission;
             }
 
-            return {
+            admissions.push({
               patient,
               admission,
-            };
-          });
+            });
+          }
 
-        const patientList =
-          Array.from(
-            patientMap.values()
+          const list =
+            Array.from(
+              map.values()
+            );
+
+          setPatients(
+            list
           );
 
-        setPatients(
-          patientList
-        );
+          setActiveAdmissions(
+            admissions
+          );
 
-        setActiveAdmissions(
-          admissions
-        );
+          return {
+            patients:
+              list,
 
-        return {
-          patients:
-            patientList,
-
-          activeAdmissions:
-            admissions,
-        };
-      } catch (error) {
-        console.error(
-          "Patient loading error:",
-          error
-        );
-
-        setPatients([]);
-        setActiveAdmissions([]);
-
-        setDataError(
-          error?.message ||
-          "Unable to load patient list."
-        );
-
-        return {
-          patients: [],
-          activeAdmissions: [],
-        };
-      } finally {
-        setPatientsLoading(false);
-      }
-    }, []);
-
-
-  /* =====================================================
-     SPECIALIST QUEUE
-  ===================================================== */
-
-  const loadSpecialistQueue =
-    useCallback(async () => {
-      try {
-        const {
-          data,
-          error,
-        } = await db.rpc(
-          "prism_get_specialist_queue"
-        );
-
-        if (error) {
+            activeAdmissions:
+              admissions,
+          };
+        } catch (error) {
           console.error(
-            "Specialist queue error:",
+            "Patient loading error:",
             error
           );
 
-          setSpecialistQueue([]);
+          setPatients([]);
+          setActiveAdmissions([]);
+
+          setDataError(
+            error?.message ||
+              "Unable to load patients."
+          );
+
+          return {
+            patients: [],
+            activeAdmissions: [],
+          };
+        }
+      },
+      []
+    );
+
+
+  /* ===================================================
+     SPECIALIST QUEUE
+  =================================================== */
+
+  const loadSpecialistQueue =
+    useCallback(
+      async () => {
+        try {
+          const {
+            data,
+            error,
+          } = await db.rpc(
+            "prism_get_specialist_queue"
+          );
+
+          if (error) {
+            console.error(
+              "Specialist queue:",
+              error
+            );
+
+            setSpecialistQueue(
+              []
+            );
+
+            return [];
+          }
+
+          const rows =
+            Array.isArray(data)
+              ? data
+              : [];
+
+          setSpecialistQueue(
+            rows
+          );
+
+          return rows;
+        } catch (error) {
+          console.error(
+            "Specialist queue:",
+            error
+          );
+
+          setSpecialistQueue(
+            []
+          );
+
           return [];
         }
-
-        const rows =
-          Array.isArray(data)
-            ? data
-            : [];
-
-        setSpecialistQueue(
-          rows
-        );
-
-        return rows;
-      } catch (error) {
-        console.error(
-          "Specialist queue error:",
-          error
-        );
-
-        setSpecialistQueue([]);
-        return [];
-      }
-    }, []);
+      },
+      []
+    );
 
 
-  /* =====================================================
+  /* ===================================================
      WORKSPACE
-  ===================================================== */
+  =================================================== */
 
   const loadWorkspace =
-    useCallback(async () => {
-      setDataError("");
+    useCallback(
+      async () => {
+        setDataError("");
 
-      try {
-        await loadClinicalContext();
+        try {
+          await loadClinicalContext();
 
-        await Promise.all([
-          loadPatients(),
-          loadSpecialistQueue(),
-        ]);
-      } catch (error) {
-        console.error(
-          "Workspace loading error:",
-          error
-        );
+          await Promise.all([
+            loadPatients(),
+            loadSpecialistQueue(),
+          ]);
+        } catch (error) {
+          console.error(
+            "Workspace error:",
+            error
+          );
 
-        setDataError(
-          error?.message ||
-          "Unable to load PRISM."
-        );
-      }
-    }, [
-      loadClinicalContext,
-      loadPatients,
-      loadSpecialistQueue,
-    ]);
+          setDataError(
+            error?.message ||
+              "Unable to load PRISM workspace."
+          );
+        }
+      },
+      [
+        loadClinicalContext,
+        loadPatients,
+        loadSpecialistQueue,
+      ]
+    );
 
 
-  /* =====================================================
+  /* ===================================================
      SESSION
-  ===================================================== */
+  =================================================== */
 
   const startSession =
     useCallback(
@@ -412,7 +660,9 @@ function App() {
             data,
             error,
           } = await db
-            .from("user_sessions")
+            .from(
+              "user_sessions"
+            )
             .insert({
               user_id:
                 user.id,
@@ -440,7 +690,7 @@ function App() {
 
           if (error) {
             console.error(
-              "Session start error:",
+              "Session logging error:",
               error
             );
 
@@ -449,11 +699,11 @@ function App() {
 
           setSessionId(
             data?.id ||
-            null
+              null
           );
         } catch (error) {
           console.error(
-            "Session start error:",
+            "Session logging error:",
             error
           );
         }
@@ -462,82 +712,15 @@ function App() {
     );
 
 
-  const endSession =
-    useCallback(async () => {
-      if (!sessionId) {
-        return;
-      }
-
-      try {
-        await db
-          .from("user_sessions")
-          .update({
-            ended_at:
-              new Date().toISOString(),
-
-            last_seen_at:
-              new Date().toISOString(),
-          })
-          .eq(
-            "id",
-            sessionId
-          );
-      } catch (error) {
-        console.error(
-          "Session end error:",
-          error
-        );
-      }
-
-      setSessionId(null);
-    }, [
-      sessionId,
-    ]);
-
-
-  const heartbeat =
-    useCallback(async () => {
-      if (!sessionId) {
-        return;
-      }
-
-      try {
-        await db
-          .from("user_sessions")
-          .update({
-            last_seen_at:
-              new Date().toISOString(),
-          })
-          .eq(
-            "id",
-            sessionId
-          );
-      } catch (error) {
-        console.error(
-          "Heartbeat error:",
-          error
-        );
-      }
-    }, [
-      sessionId,
-    ]);
-
-
-  /* =====================================================
+  /* ===================================================
      ACTIVITY
-  ===================================================== */
+  =================================================== */
 
   const recordActivity =
     useCallback(
       async (
         action,
-        {
-          entityType = null,
-          entityId = null,
-          patientId = null,
-          route = null,
-          metadata = {},
-        } = {}
+        options = {}
       ) => {
         if (
           !session?.user?.id
@@ -546,10 +729,10 @@ function App() {
         }
 
         try {
-          const {
-            error,
-          } = await db
-            .from("activity_events")
+          await db
+            .from(
+              "activity_events"
+            )
             .insert({
               actor_id:
                 session.user.id,
@@ -560,28 +743,28 @@ function App() {
               action,
 
               entity_type:
-                entityType,
+                options.entityType ??
+                null,
 
               entity_id:
-                entityId,
+                options.entityId ??
+                null,
 
               patient_id:
-                patientId,
+                options.patientId ??
+                null,
 
-              route,
+              route:
+                options.route ??
+                null,
 
-              metadata,
+              metadata:
+                options.metadata ??
+                {},
             });
-
-          if (error) {
-            console.error(
-              "Activity error:",
-              error
-            );
-          }
         } catch (error) {
           console.error(
-            "Activity error:",
+            "Activity logging error:",
             error
           );
         }
@@ -593,17 +776,71 @@ function App() {
     );
 
 
-  /* =====================================================
-     AUTH INITIALIZATION
-  ===================================================== */
+  /* ===================================================
+     LOAD CURRENT PAGE
+  =================================================== */
+
+  const loadCurrentPage =
+    useCallback(
+      async (
+        targetPage
+      ) => {
+        setPageLoading(
+          true
+        );
+
+        setPageError(
+          null
+        );
+
+        try {
+          const Component =
+            await loadPage(
+              targetPage
+            );
+
+          if (
+            typeof Component !==
+            "function"
+          ) {
+            throw new Error(
+              `Page "${targetPage}" did not export a valid React component.`
+            );
+          }
+
+          setPageComponent(
+            () => Component
+          );
+        } catch (error) {
+          console.error(
+            `Failed to load page "${targetPage}":`,
+            error
+          );
+
+          setPageError(
+            error
+          );
+        } finally {
+          setPageLoading(
+            false
+          );
+        }
+      },
+      []
+    );
+
+
+  /* ===================================================
+     INITIAL AUTH
+  =================================================== */
 
   useEffect(() => {
     let mounted = true;
 
     async function initialize() {
-      setLoading(true);
-
       try {
+        setLoading(true);
+
         const {
           data: {
             session:
@@ -616,7 +853,9 @@ function App() {
           return;
         }
 
-        if (!currentSession) {
+        if (
+          !currentSession
+        ) {
           setSession(null);
           setProfile(null);
           setClinicalContext(null);
@@ -647,16 +886,20 @@ function App() {
         );
 
         await loadWorkspace();
+
+        await loadCurrentPage(
+          "dashboard"
+        );
       } catch (error) {
         console.error(
-          "Initialization error:",
+          "PRISM initialization error:",
           error
         );
 
         if (mounted) {
           setDataError(
             error?.message ||
-            "Unable to initialize PRISM."
+              "Unable to initialize PRISM."
           );
         }
       } finally {
@@ -687,29 +930,45 @@ function App() {
               "SIGNED_IN" &&
             newSession
           ) {
-            setSession(
-              newSession
-            );
-
-            const currentProfile =
-              await loadProfile(
-                newSession.user.id
+            try {
+              setSession(
+                newSession
               );
 
-            setProfile(
-              currentProfile
-            );
+              const currentProfile =
+                await loadProfile(
+                  newSession.user.id
+                );
 
-            await startSession(
-              newSession.user,
-              currentProfile
-            );
+              setProfile(
+                currentProfile
+              );
 
-            await loadWorkspace();
+              await startSession(
+                newSession.user,
+                currentProfile
+              );
 
-            setPage(
-              "dashboard"
-            );
+              await loadWorkspace();
+
+              setPage(
+                "dashboard"
+              );
+
+              await loadCurrentPage(
+                "dashboard"
+              );
+            } catch (error) {
+              console.error(
+                "Post-login error:",
+                error
+              );
+
+              setDataError(
+                error?.message ||
+                  "Unable to open PRISM after login."
+              );
+            }
           }
 
           if (
@@ -724,11 +983,16 @@ function App() {
             setActiveAdmissions([]);
             setSpecialistQueue([]);
 
-            setSelectedPatientId(null);
-            setSessionId(null);
+            setSelectedPatientId(
+              null
+            );
 
             setPage(
               "dashboard"
+            );
+
+            setPageComponent(
+              null
             );
           }
         }
@@ -736,50 +1000,26 @@ function App() {
 
     return () => {
       mounted = false;
+
       subscription.unsubscribe();
     };
   }, [
     loadProfile,
     startSession,
     loadWorkspace,
+    loadCurrentPage,
   ]);
 
 
-  /* =====================================================
-     HEARTBEAT
-  ===================================================== */
-
-  useEffect(() => {
-    if (!sessionId) {
-      return;
-    }
-
-    heartbeat();
-
-    const timer =
-      setInterval(
-        heartbeat,
-        60000
-      );
-
-    return () => {
-      clearInterval(
-        timer
-      );
-    };
-  }, [
-    sessionId,
-    heartbeat,
-  ]);
-
-
-  /* =====================================================
+  /* ===================================================
      NAVIGATION
-  ===================================================== */
+  =================================================== */
 
   const navigate =
     useCallback(
-      async (target) => {
+      async (
+        target
+      ) => {
         setPage(
           target
         );
@@ -794,16 +1034,21 @@ function App() {
         ) {
           await loadWorkspace();
         }
+
+        await loadCurrentPage(
+          target
+        );
       },
       [
         loadWorkspace,
+        loadCurrentPage,
       ]
     );
 
 
-  /* =====================================================
+  /* ===================================================
      OPEN PATIENT
-  ===================================================== */
+  =================================================== */
 
   const openPatient =
     useCallback(
@@ -843,94 +1088,118 @@ function App() {
               "patient",
           }
         );
+
+        await loadCurrentPage(
+          "patient"
+        );
       },
       [
         recordActivity,
+        loadCurrentPage,
       ]
     );
 
 
-  /* =====================================================
+  /* ===================================================
      LOGOUT
-  ===================================================== */
+  =================================================== */
 
   const logout =
-    useCallback(async () => {
-      try {
-        await endSession();
+    useCallback(
+      async () => {
+        try {
+          await db.auth.signOut();
+        } catch (error) {
+          console.error(
+            "Logout error:",
+            error
+          );
+        }
+      },
+      []
+    );
 
-        await db.auth.signOut();
-      } catch (error) {
-        console.error(
-          "Logout error:",
-          error
-        );
-      }
-    }, [
-      endSession,
-    ]);
 
-
-  /* =====================================================
-     LOGIN
-  ===================================================== */
+  /* ===================================================
+     LOGIN CALLBACK
+  =================================================== */
 
   const handleLogin =
-    useCallback(async () => {
-      const {
-        data: {
-          session:
-            newSession,
-        },
-      } =
-        await db.auth.getSession();
+    useCallback(
+      async () => {
+        const {
+          data: {
+            session:
+              newSession,
+          },
+        } =
+          await db.auth.getSession();
 
-      if (!newSession) {
-        return;
-      }
+        if (!newSession) {
+          return;
+        }
 
-      setSession(
-        newSession
-      );
-
-      const currentProfile =
-        await loadProfile(
-          newSession.user.id
+        setSession(
+          newSession
         );
 
-      setProfile(
-        currentProfile
-      );
+        try {
+          const currentProfile =
+            await loadProfile(
+              newSession.user.id
+            );
 
-      await startSession(
-        newSession.user,
-        currentProfile
-      );
+          setProfile(
+            currentProfile
+          );
 
-      await loadWorkspace();
+          await startSession(
+            newSession.user,
+            currentProfile
+          );
 
-      setPage(
-        "dashboard"
-      );
-    }, [
-      loadProfile,
-      startSession,
-      loadWorkspace,
-    ]);
+          await loadWorkspace();
+
+          setPage(
+            "dashboard"
+          );
+
+          await loadCurrentPage(
+            "dashboard"
+          );
+        } catch (error) {
+          console.error(
+            "Login workspace error:",
+            error
+          );
+
+          setDataError(
+            error?.message ||
+              "Unable to open workspace."
+          );
+        }
+      },
+      [
+        loadProfile,
+        startSession,
+        loadWorkspace,
+        loadCurrentPage,
+      ]
+    );
 
 
-  /* =====================================================
+  /* ===================================================
      ADMIN
-  ===================================================== */
+  =================================================== */
 
   const isAdmin =
     profile?.role ===
     "admin";
 
 
-  /* =====================================================
+  /* ===================================================
      COMMON PROPS
-  ===================================================== */
+  =================================================== */
 
   const commonProps =
     useMemo(
@@ -946,10 +1215,7 @@ function App() {
 
         specialistQueue,
 
-        loading:
-          patientsLoading,
-
-        patientsLoading,
+        loading,
 
         dataError,
 
@@ -974,7 +1240,7 @@ function App() {
         patients,
         activeAdmissions,
         specialistQueue,
-        patientsLoading,
+        loading,
         dataError,
         loadWorkspace,
         navigate,
@@ -985,128 +1251,87 @@ function App() {
     );
 
 
-  /* =====================================================
+  /* ===================================================
      LOADING
-  ===================================================== */
+  =================================================== */
 
   if (loading) {
     return h(
-      "div",
+      LoadingScreen,
       {
-        className:
-          "prism-loading-screen",
-      },
-
-      h(
-        "div",
-        {
-          className:
-            "prism-loading-card",
-        },
-
-        h(
-          "div",
-          {
-            className:
-              "prism-loading-title",
-          },
-          "PRISM"
-        ),
-
-        h(
-          "div",
-          {
-            className:
-              "prism-loading-text",
-          },
-          "Loading clinical workspace..."
-        )
-      )
+        message:
+          "Loading PRISM..."
+      }
     );
   }
 
 
-  /* =====================================================
+  /* ===================================================
      LOGIN
-  ===================================================== */
+  =================================================== */
 
   if (!session) {
     return h(
       Login,
       {
         onLogin:
-          handleLogin,
+          handleLogin
       }
     );
   }
 
 
-  /* =====================================================
-     NAV BUTTON
-  ===================================================== */
+  /* ===================================================
+     PAGE ERROR
+  =================================================== */
 
-  function navButton(
-    target,
-    label
-  ) {
+  if (pageError) {
     return h(
-      "button",
+      ErrorScreen,
       {
-        type:
-          "button",
-
-        className:
-          "nav-btn" +
-          (
-            page ===
-            target
-              ? " active"
-              : ""
-          ),
-
-        onClick:
+        title:
+          `Unable to load "${page}"`,
+        error:
+          pageError,
+        onRetry:
           () =>
-            navigate(
-              target
+            loadCurrentPage(
+              page
             ),
-      },
-      label
+      }
     );
   }
 
 
-  /* =====================================================
+  /* ===================================================
+     PAGE LOADING
+  =================================================== */
+
+  if (
+    pageLoading ||
+    !pageComponent
+  ) {
+    return h(
+      LoadingScreen,
+      {
+        message:
+          `Loading ${page}...`
+      }
+    );
+  }
+
+
+  /* ===================================================
+     CURRENT PAGE
+  =================================================== */
+
+  const CurrentPage =
+    pageComponent;
+
+
+  /* ===================================================
      DISPLAY
-  ===================================================== */
-
-  const displayName =
-    clinicalContext?.display_name ||
-    clinicalContext?.user?.display_name ||
-    profile?.display_name ||
-    profile?.email ||
-    session?.user?.email ||
-    "User";
-
-  const systemRole =
-    clinicalContext?.system_role ||
-    clinicalContext?.user?.system_role ||
-    profile?.role ||
-    "medical_officer";
-
-  const departmentName =
-    clinicalContext?.department?.name ||
-    clinicalContext?.department_name ||
-    "—";
-
-  const unitName =
-    clinicalContext?.home_unit?.name ||
-    clinicalContext?.home_unit_name ||
-    "—";
-
-
-  /* =====================================================
-     APP
-  ===================================================== */
+  =================================================== */
 
   return h(
     React.Fragment,
@@ -1141,7 +1366,8 @@ function App() {
             className:
               "role-badge",
           },
-          systemRole
+          profile?.role ||
+            "user"
         )
       ),
 
@@ -1167,7 +1393,9 @@ function App() {
               className:
                 "small",
             },
-            displayName
+            profile?.display_name ||
+              session?.user?.email ||
+              "User"
           ),
 
           h(
@@ -1176,7 +1404,17 @@ function App() {
               className:
                 "small muted",
             },
-            `${departmentName} · ${unitName}`
+            [
+              clinicalContext?.department?.name ||
+                clinicalContext?.department_name,
+
+              clinicalContext?.home_unit?.name ||
+                clinicalContext?.unit_name,
+            ]
+              .filter(Boolean)
+              .join(
+                " · "
+              )
           )
         ),
 
@@ -1209,43 +1447,7 @@ function App() {
                 "12px 16px",
             },
           },
-
-          h(
-            "strong",
-            null,
-            "PRISM Error"
-          ),
-
-          h(
-            "div",
-            {
-              style: {
-                marginTop:
-                  "4px",
-              },
-            },
-            dataError
-          ),
-
-          h(
-            "button",
-            {
-              type:
-                "button",
-
-              className:
-                "btn btn-secondary",
-
-              style: {
-                marginTop:
-                  "10px",
-              },
-
-              onClick:
-                loadWorkspace,
-            },
-            "Retry"
-          )
+          dataError
         )
       : null,
 
@@ -1272,24 +1474,100 @@ function App() {
           "Clinical Workspace"
         ),
 
-        navButton(
-          "dashboard",
+        h(
+          "button",
+          {
+            type:
+              "button",
+
+            className:
+              "nav-btn" +
+              (
+                page ===
+                "dashboard"
+                  ? " active"
+                  : ""
+              ),
+
+            onClick:
+              () =>
+                navigate(
+                  "dashboard"
+                ),
+          },
           "Dashboard"
         ),
 
-        navButton(
-          "patients",
+        h(
+          "button",
+          {
+            type:
+              "button",
+
+            className:
+              "nav-btn" +
+              (
+                page ===
+                "patients"
+                  ? " active"
+                  : ""
+              ),
+
+            onClick:
+              () =>
+                navigate(
+                  "patients"
+                ),
+          },
           "Patients"
         ),
 
-        navButton(
-          "specialist",
+        h(
+          "button",
+          {
+            type:
+              "button",
+
+            className:
+              "nav-btn" +
+              (
+                page ===
+                "specialist"
+                  ? " active"
+                  : ""
+              ),
+
+            onClick:
+              () =>
+                navigate(
+                  "specialist"
+                ),
+          },
           "Specialist Queue"
         ),
 
         isAdmin
-          ? navButton(
-              "administration",
+          ? h(
+              "button",
+              {
+                type:
+                  "button",
+
+                className:
+                  "nav-btn" +
+                  (
+                    page ===
+                    "administration"
+                      ? " active"
+                      : ""
+                  ),
+
+                onClick:
+                  () =>
+                    navigate(
+                      "administration"
+                    ),
+              },
               "Administration"
             )
           : null
@@ -1302,67 +1580,17 @@ function App() {
             "content",
         },
 
-        page ===
-          "dashboard"
-
-          ? h(
-              Dashboard,
-              commonProps
-            )
-
-          : page ===
-            "patients"
-
-            ? h(
-                Patients,
-                commonProps
-              )
-
-            : page ===
-              "patient"
-
-              ? h(
-                  Patient,
-                  {
-                    session,
-                    profile,
-                    clinicalContext,
-
-                    patientId:
-                      selectedPatientId,
-
-                    onNavigate:
-                      navigate,
-
-                    recordActivity,
-                  }
-                )
-
-              : page ===
-                "specialist"
-
-                ? h(
-                    SpecialistQueue,
-                    commonProps
-                  )
-
-                : page ===
-                  "administration"
-
-                  ? isAdmin
-                    ? h(
-                        Administration,
-                        commonProps
-                      )
-                    : h(
-                        Dashboard,
-                        commonProps
-                      )
-
-                  : h(
-                      Dashboard,
-                      commonProps
-                    )
+        h(
+          CurrentPage,
+          commonProps,
+          page ===
+            "patient"
+            ? {
+                patientId:
+                  selectedPatientId,
+              }
+            : null
+        )
       )
     )
   );
@@ -1370,7 +1598,7 @@ function App() {
 
 
 /* =====================================================
-   START PRISM
+   MOUNT
 ===================================================== */
 
 const root =
@@ -1379,13 +1607,42 @@ const root =
   );
 
 if (!root) {
-  throw new Error(
-    "PRISM root element not found."
-  );
-}
+  document.body.innerHTML =
+    "<h2 style='padding:20px'>PRISM: root element not found.</h2>";
+} else {
+  try {
+    createRoot(
+      root
+    ).render(
+      h(App)
+    );
+  } catch (error) {
+    console.error(
+      "PRISM mount error:",
+      error
+    );
 
-createRoot(
-  root
-).render(
-  h(App)
-);
+    root.innerHTML = "";
+
+    const message =
+      document.createElement(
+        "div"
+      );
+
+    message.style.cssText =
+      "padding:24px;font-family:Arial;color:#b91c1c;";
+
+    message.innerHTML =
+      "<h2>PRISM failed to start</h2>" +
+      "<p>" +
+      (
+        error?.message ||
+        String(error)
+      ) +
+      "</p>";
+
+    root.appendChild(
+      message
+    );
+  }
+  }
