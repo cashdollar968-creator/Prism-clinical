@@ -12,6 +12,13 @@ import {
 import { db } from "./supabase.js";
 import Login from "./pages/Login.js";
 
+/*
+ * IMPORTANT:
+ * Dashboard is loaded statically.
+ * This avoids the current dynamic-import loading hang.
+ */
+import Dashboard from "./pages/Dashboard.js";
+
 const h = React.createElement;
 
 
@@ -155,11 +162,11 @@ function LoadingScreen({
 async function loadPage(pageName) {
   switch (pageName) {
     case "dashboard":
-      return (
-        await import(
-          "./pages/Dashboard.js"
-        )
-      ).default;
+      /*
+       * Dashboard is statically imported above.
+       * Do NOT dynamically import it.
+       */
+      return Dashboard;
 
     case "patients":
       return (
@@ -190,11 +197,7 @@ async function loadPage(pageName) {
       ).default;
 
     default:
-      return (
-        await import(
-          "./pages/Dashboard.js"
-        )
-      ).default;
+      return Dashboard;
   }
 }
 
@@ -606,10 +609,9 @@ function App() {
 
   /* ===================================================
      WORKSPACE DATA
-     
-     IMPORTANT:
+
      These operations are deliberately
-     independent from the Dashboard render.
+     independent from Dashboard rendering.
   =================================================== */
 
   const loadWorkspaceData =
@@ -875,8 +877,6 @@ function App() {
 
         /*
          * Load Dashboard FIRST.
-         *
-         * This is the key change.
          */
         await loadCurrentPage(
           "dashboard"
@@ -888,13 +888,12 @@ function App() {
 
         /*
          * Authentication is complete.
-         * Stop the global loading screen.
+         * Stop global loading.
          */
         setLoading(false);
 
         /*
-         * Everything below is secondary
-         * workspace data and must not block
+         * Secondary data must not block
          * Dashboard rendering.
          */
         loadWorkspaceData();
@@ -980,7 +979,7 @@ function App() {
               );
 
               /*
-               * Load secondary data
+               * Secondary data loads
                * without blocking UI.
                */
               loadWorkspaceData();
@@ -1061,16 +1060,10 @@ function App() {
           target
         );
 
-        /*
-         * Load the requested page first.
-         */
         await loadCurrentPage(
           target
         );
 
-        /*
-         * Refresh data in background.
-         */
         if (
           target ===
             "dashboard" ||
@@ -1170,12 +1163,6 @@ function App() {
   const handleLogin =
     useCallback(
       async () => {
-        /*
-         * Login.js already performs the
-         * actual authentication.
-         *
-         * We only synchronize the session here.
-         */
         const {
           data: {
             session:
@@ -1218,8 +1205,8 @@ function App() {
           );
 
           /*
-           * Secondary operations
-           * happen after the UI opens.
+           * Secondary operations happen
+           * after the UI opens.
            */
           loadWorkspaceData();
 
