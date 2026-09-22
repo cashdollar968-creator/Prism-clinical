@@ -11,12 +11,11 @@ createRoot,
 
 import { db } from "./supabase.js";
 import Login from "./pages/Login.js";
-import Dashboard from "./pages/Dashboard.js";
 
 const h = React.createElement;
 
 /* =====================================================
-ERROR SCREEN
+SAFE ERROR SCREEN
 ===================================================== */
 
 function ErrorScreen({
@@ -97,7 +96,7 @@ h(
 }
 
 /* =====================================================
-LOADING SCREEN
+LOADING
 ===================================================== */
 
 function LoadingScreen({
@@ -149,43 +148,299 @@ h(
 }
 
 /* =====================================================
-PAGE LOADER
+SAFE DIAGNOSTIC DASHBOARD
 ===================================================== */
 
-async function loadPage(pageName) {
-switch (pageName) {
-case "patients":
-return (
-await import(
-"./pages/Patients.js"
+function SafeDashboard({
+activeAdmissions = [],
+onOpenPatient,
+}) {
+const uniquePatients =
+new Set(
+activeAdmissions.map(
+({ patient }) =>
+patient?.id
 )
-).default;
+).size;
 
-case "patient":
-  return (
-    await import(
-      "./pages/Patient.js"
+const specialistPatients =
+activeAdmissions.filter(
+({ admission }) =>
+!!admission?.specialist_id
+).length;
+
+return h(
+"div",
+null,
+
+h(
+  "div",
+  {
+    className: "page-title",
+  },
+  "Dashboard"
+),
+
+h(
+  "div",
+  {
+    className: "page-subtitle",
+  },
+  "Current inpatient overview"
+),
+
+h(
+  "div",
+  {
+    className: "grid grid-4",
+  },
+
+  h(
+    "div",
+    {
+      className: "card",
+    },
+
+    h(
+      "div",
+      {
+        className: "stat-label",
+      },
+      "Active Admissions"
+    ),
+
+    h(
+      "div",
+      {
+        className: "stat-number",
+      },
+      activeAdmissions.length
     )
-  ).default;
+  ),
 
-case "specialist":
-  return (
-    await import(
-      "./pages/SpecialistQueue.js"
+  h(
+    "div",
+    {
+      className: "card",
+    },
+
+    h(
+      "div",
+      {
+        className: "stat-label",
+      },
+      "Current Patients"
+    ),
+
+    h(
+      "div",
+      {
+        className: "stat-number",
+      },
+      uniquePatients
     )
-  ).default;
+  ),
 
-case "administration":
-  return (
-    await import(
-      "./pages/Administration.js"
+  h(
+    "div",
+    {
+      className: "card",
+    },
+
+    h(
+      "div",
+      {
+        className: "stat-label",
+      },
+      "With Specialist"
+    ),
+
+    h(
+      "div",
+      {
+        className: "stat-number",
+      },
+      specialistPatients
     )
-  ).default;
+  ),
 
-default:
-  return Dashboard;
+  h(
+    "div",
+    {
+      className: "card",
+    },
 
-}
+    h(
+      "div",
+      {
+        className: "stat-label",
+      },
+      "System Status"
+    ),
+
+    h(
+      "div",
+      {
+        className: "stat-number",
+        style: {
+          fontSize: "18px",
+        },
+      },
+      "Ready"
+    )
+  )
+),
+
+h(
+  "div",
+  {
+    className: "card",
+  },
+
+  h(
+    "div",
+    {
+      className: "section-title",
+    },
+    "Current Inpatients"
+  ),
+
+  activeAdmissions.length === 0
+    ? h(
+        "div",
+        {
+          className: "empty",
+        },
+        "No active admissions."
+      )
+
+    : h(
+        "div",
+        {
+          className: "table-wrap",
+        },
+
+        h(
+          "table",
+          null,
+
+          h(
+            "thead",
+            null,
+
+            h(
+              "tr",
+              null,
+
+              h(
+                "th",
+                null,
+                "Patient"
+              ),
+
+              h(
+                "th",
+                null,
+                "Bed"
+              ),
+
+              h(
+                "th",
+                null,
+                "Diagnosis"
+              ),
+
+              h(
+                "th",
+                null,
+                "Action"
+              )
+            )
+          ),
+
+          h(
+            "tbody",
+            null,
+
+            activeAdmissions.map(
+              ({
+                patient,
+                admission,
+              }) =>
+                h(
+                  "tr",
+                  {
+                    key:
+                      admission?.id ||
+                      patient?.id,
+                  },
+
+                  h(
+                    "td",
+                    null,
+
+                    h(
+                      "strong",
+                      null,
+                      patient?.full_name ||
+                        "—"
+                    ),
+
+                    h(
+                      "div",
+                      {
+                        className:
+                          "small muted",
+                      },
+                      patient?.patient_code ||
+                        "—"
+                    )
+                  ),
+
+                  h(
+                    "td",
+                    null,
+                    admission?.bed_id ||
+                      "—"
+                  ),
+
+                  h(
+                    "td",
+                    null,
+                    admission?.working_diagnosis ||
+                      "—"
+                  ),
+
+                  h(
+                    "td",
+                    null,
+
+                    h(
+                      "button",
+                      {
+                        className:
+                          "btn btn-secondary",
+
+                        type:
+                          "button",
+
+                        onClick:
+                          () =>
+                            onOpenPatient(
+                              patient
+                            ),
+                      },
+                      "Open"
+                    )
+                  )
+                )
+            )
+          )
+        )
+      )
+)
+
+);
 }
 
 /* =====================================================
@@ -193,47 +448,75 @@ APP
 ===================================================== */
 
 function App() {
-const [session, setSession] =
-useState(null);
+const [
+session,
+setSession,
+] = useState(null);
 
-const [profile, setProfile] =
-useState(null);
+const [
+profile,
+setProfile,
+] = useState(null);
 
-const [clinicalContext, setClinicalContext] =
-useState(null);
+const [
+clinicalContext,
+setClinicalContext,
+] = useState(null);
 
-const [page, setPage] =
-useState("dashboard");
+const [
+page,
+setPage,
+] = useState("dashboard");
 
-const [selectedPatientId, setSelectedPatientId] =
-useState(null);
+const [
+selectedPatientId,
+setSelectedPatientId,
+] = useState(null);
 
-const [patients, setPatients] =
-useState([]);
+const [
+patients,
+setPatients,
+] = useState([]);
 
-const [activeAdmissions, setActiveAdmissions] =
-useState([]);
+const [
+activeAdmissions,
+setActiveAdmissions,
+] = useState([]);
 
-const [specialistQueue, setSpecialistQueue] =
-useState([]);
+const [
+specialistQueue,
+setSpecialistQueue,
+] = useState([]);
 
-const [loading, setLoading] =
-useState(true);
+const [
+loading,
+setLoading,
+] = useState(true);
 
-const [pageComponent, setPageComponent] =
-useState(null);
+const [
+pageComponent,
+setPageComponent,
+] = useState(null);
 
-const [pageLoading, setPageLoading] =
-useState(false);
+const [
+pageLoading,
+setPageLoading,
+] = useState(false);
 
-const [pageError, setPageError] =
-useState(null);
+const [
+pageError,
+setPageError,
+] = useState(null);
 
-const [dataError, setDataError] =
-useState("");
+const [
+dataError,
+setDataError,
+] = useState("");
 
-const [sessionId, setSessionId] =
-useState(null);
+const [
+sessionId,
+setSessionId,
+] = useState(null);
 
 /* ===================================================
 PROFILE
@@ -263,7 +546,9 @@ return null;
       );
     }
 
-    setProfile(data || null);
+    setProfile(
+      data || null
+    );
 
     return data || null;
   },
@@ -315,7 +600,7 @@ error,
 );
 
 /* ===================================================
-PATIENT LIST
+PATIENTS
 =================================================== */
 
 const loadPatients =
@@ -491,6 +776,7 @@ error,
         activeAdmissions:
           admissions,
       };
+
     } catch (error) {
       console.error(
         "Patient loading error:",
@@ -546,6 +832,7 @@ error,
       );
 
       return rows;
+
     } catch (error) {
       console.error(
         "Specialist queue error:",
@@ -562,7 +849,7 @@ error,
 
 /* ===================================================
 WORKSPACE DATA
-===================================================== */
+=================================================== */
 
 const loadWorkspaceData =
 useCallback(
@@ -581,8 +868,8 @@ loadSpecialistQueue,
 );
 
 /* ===================================================
-SESSION LOGGING
-===================================================== */
+SESSION
+=================================================== */
 
 const startSession =
 useCallback(
@@ -599,7 +886,9 @@ return null;
         data,
         error,
       } = await db
-        .from("user_sessions")
+        .from(
+          "user_sessions"
+        )
         .insert({
           user_id:
             user.id,
@@ -641,6 +930,7 @@ return null;
 
       return data?.id ||
         null;
+
     } catch (error) {
       console.error(
         "Session logging error:",
@@ -655,7 +945,7 @@ return null;
 
 /* ===================================================
 ACTIVITY
-===================================================== */
+=================================================== */
 
 const recordActivity =
 useCallback(
@@ -717,75 +1007,120 @@ return;
 );
 
 /* ===================================================
-LOAD NON-DASHBOARD PAGE
-===================================================== */
+NON-DASHBOARD PAGE LOADER
+=================================================== */
 
 const loadCurrentPage =
 useCallback(
 async (
 targetPage
 ) => {
-/*
-* IMPORTANT:
-* Dashboard does not use this loader.
-* It is rendered directly.
-*/
 if (
 targetPage ===
 "dashboard"
 ) {
-setPageError(null);
-setPageLoading(false);
 return;
 }
 
-    setPageLoading(true);
-    setPageError(null);
+    setPageLoading(
+      true
+    );
+
+    setPageError(
+      null
+    );
 
     try {
-      const Component =
-        await loadPage(
-          targetPage
-        );
+      let Component;
+
+      switch (
+        targetPage
+      ) {
+        case "patients":
+          Component =
+            (
+              await import(
+                "./pages/Patients.js"
+              )
+            ).default;
+          break;
+
+        case "patient":
+          Component =
+            (
+              await import(
+                "./pages/Patient.js"
+              )
+            ).default;
+          break;
+
+        case "specialist":
+          Component =
+            (
+              await import(
+                "./pages/SpecialistQueue.js"
+              )
+            ).default;
+          break;
+
+        case "administration":
+          Component =
+            (
+              await import(
+                "./pages/Administration.js"
+              )
+            ).default;
+          break;
+
+        default:
+          return;
+      }
 
       if (
         typeof Component !==
         "function"
       ) {
         throw new Error(
-          `Page "${targetPage}" did not export a valid React component.`
+          `Page "${targetPage}" is not a valid React component.`
         );
       }
 
       setPageComponent(
         () => Component
       );
+
     } catch (error) {
       console.error(
-        `Failed to load page "${targetPage}":`,
+        "Page loading error:",
         error
       );
 
       setPageError(
         error
       );
+
     } finally {
-      setPageLoading(false);
+      setPageLoading(
+        false
+      );
     }
   },
   []
 );
 
 /* ===================================================
-INITIAL AUTHENTICATION
-===================================================== */
+AUTH INITIALIZATION
+=================================================== */
 
 useEffect(() => {
-let mounted = true;
+let mounted =
+true;
 
 async function initialize() {
   try {
-    setLoading(true);
+    setLoading(
+      true
+    );
 
     const {
       data: {
@@ -804,7 +1139,6 @@ async function initialize() {
     ) {
       setSession(null);
       setProfile(null);
-      setClinicalContext(null);
       setLoading(false);
       return;
     }
@@ -826,32 +1160,14 @@ async function initialize() {
       currentProfile
     );
 
-    /*
-     * Dashboard is already statically
-     * available. There is nothing to load.
-     */
     setPage(
       "dashboard"
     );
 
-    setPageComponent(
-      null
+    setLoading(
+      false
     );
 
-    setPageError(
-      null
-    );
-
-    /*
-     * CRITICAL:
-     * Stop global loading immediately.
-     */
-    setLoading(false);
-
-    /*
-     * Secondary operations happen
-     * after Dashboard is available.
-     */
     loadWorkspaceData();
 
     startSession(
@@ -861,7 +1177,7 @@ async function initialize() {
 
   } catch (error) {
     console.error(
-      "PRISM initialization error:",
+      "Initialization error:",
       error
     );
 
@@ -871,7 +1187,9 @@ async function initialize() {
           "Unable to initialize PRISM."
       );
 
-      setLoading(false);
+      setLoading(
+        false
+      );
     }
   }
 }
@@ -915,19 +1233,8 @@ const {
             currentProfile
           );
 
-          /*
-           * Dashboard opens directly.
-           */
           setPage(
             "dashboard"
-          );
-
-          setPageComponent(
-            null
-          );
-
-          setPageError(
-            null
           );
 
           setLoading(
@@ -1010,7 +1317,7 @@ startSession,
 
 /* ===================================================
 NAVIGATION
-===================================================== */
+=================================================== */
 
 const navigate =
 useCallback(
@@ -1061,7 +1368,7 @@ target
 
 /* ===================================================
 OPEN PATIENT
-===================================================== */
+=================================================== */
 
 const openPatient =
 useCallback(
@@ -1114,7 +1421,7 @@ typeof patientOrId ===
 
 /* ===================================================
 LOGOUT
-===================================================== */
+=================================================== */
 
 const logout =
 useCallback(
@@ -1133,7 +1440,7 @@ error
 
 /* ===================================================
 LOGIN CALLBACK
-===================================================== */
+=================================================== */
 
 const handleLogin =
 useCallback(
@@ -1164,25 +1471,10 @@ await db.auth.getSession();
         currentProfile
       );
 
-      /*
-       * Do NOT call loadCurrentPage("dashboard").
-       * Dashboard is rendered directly.
-       */
       setPage(
         "dashboard"
       );
 
-      setPageComponent(
-        null
-      );
-
-      setPageError(
-        null
-      );
-
-      /*
-       * This is the important part.
-       */
       setLoading(
         false
       );
@@ -1205,7 +1497,9 @@ await db.auth.getSession();
           "Unable to open workspace."
       );
 
-      setLoading(false);
+      setLoading(
+        false
+      );
     }
   },
   [
@@ -1217,7 +1511,7 @@ await db.auth.getSession();
 
 /* ===================================================
 ADMIN
-===================================================== */
+=================================================== */
 
 const isAdmin =
 profile?.role ===
@@ -1225,7 +1519,7 @@ profile?.role ===
 
 /* ===================================================
 COMMON PROPS
-===================================================== */
+=================================================== */
 
 const commonProps =
 useMemo(
@@ -1278,7 +1572,7 @@ clinicalContext,
 
 /* ===================================================
 GLOBAL LOADING
-===================================================== */
+=================================================== */
 
 if (loading) {
 return h(
@@ -1292,7 +1586,7 @@ message:
 
 /* ===================================================
 LOGIN
-===================================================== */
+=================================================== */
 
 if (!session) {
 return h(
@@ -1305,8 +1599,8 @@ handleLogin,
 }
 
 /* ===================================================
-PAGE ERROR
-===================================================== */
+ERROR
+=================================================== */
 
 if (pageError) {
 return h(
@@ -1329,26 +1623,23 @@ title:
 }
 
 /* ===================================================
-DIRECT DASHBOARD
+CURRENT PAGE
+=================================================== */
 
- IMPORTANT:
- Dashboard deliberately bypasses
- pageComponent/pageLoading.
-
-===================================================== */
-
-const CurrentPage =
-page ===
-"dashboard"
-? Dashboard
-: pageComponent;
-
-/* ===================================================
-NON-DASHBOARD PAGE LOADING
-===================================================== */
+let CurrentPage =
+SafeDashboard;
 
 if (
-page !== "dashboard" &&
+page !==
+"dashboard"
+) {
+CurrentPage =
+pageComponent;
+}
+
+if (
+page !==
+"dashboard" &&
 (
 pageLoading ||
 !CurrentPage
@@ -1365,7 +1656,7 @@ message:
 
 /* ===================================================
 MAIN UI
-===================================================== */
+=================================================== */
 
 return h(
 React.Fragment,
@@ -1665,7 +1956,7 @@ const message =
   );
 
 message.style.cssText =
-  "padding:24px;font-family:Arial;color:#b91c1c;";
+  "padding:24px;font-family:Arial;color:#b91c1c;background:#fff;";
 
 message.innerHTML =
   "<h2>PRISM failed to start</h2>" +
@@ -1681,4 +1972,4 @@ root.appendChild(
 );
 
 }
-}
+            }
