@@ -1,47 +1,76 @@
-import React, {
-  useEffect,
-  useMemo,
-  useState
-} from "https://esm.sh/react@18.3.1";
+import React, { useEffect, useMemo, useState } from "react";
+import { db } from "../supabase";
 
-import { db } from "../supabase.js";
-
-function toLocalDateTimeValue(date = new Date()) {
-  const pad = (value) => String(value).padStart(2, "0");
-
+function Field({ label, required, children }) {
   return (
-    `${date.getFullYear()}-` +
-    `${pad(date.getMonth() + 1)}-` +
-    `${pad(date.getDate())}T` +
-    `${pad(date.getHours())}:` +
-    `${pad(date.getMinutes())}`
+    <label className="block">
+      <span className="mb-1 block text-sm font-medium text-slate-700">
+        {label} {required && <span className="text-red-500">*</span>}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function Input(props) {
+  return (
+    <input
+      {...props}
+      className={`w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ${
+        props.className || ""
+      }`}
+    />
+  );
+}
+
+function Select({ children, ...props }) {
+  return (
+    <select
+      {...props}
+      className={`w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100 disabled:text-slate-400 ${
+        props.className || ""
+      }`}
+    >
+      {children}
+    </select>
+  );
+}
+
+function Textarea(props) {
+  return (
+    <textarea
+      {...props}
+      className={`min-h-[90px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ${
+        props.className || ""
+      }`}
+    />
   );
 }
 
 function NewPatientModal({ onClose, onCreated }) {
-  const [wards, setWards] = useState([]);
-  const [beds, setBeds] = useState([]);
-  const [medicalOfficers, setMedicalOfficers] = useState([]);
-  const [specialists, setSpecialists] = useState([]);
-
-  const [loadingOptions, setLoadingOptions] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const [departments, setDepartments] = useState([]);
+  const [units, setUnits] = useState([]);
+  const [wards, setWards] = useState([]);
+  const [beds, setBeds] = useState([]);
+  const [profiles, setProfiles] = useState([]);
+  const [accessibleUnitIds, setAccessibleUnitIds] = useState([]);
 
   const [form, setForm] = useState({
     patient_code: "",
     full_name: "",
     age: "",
     sex: "",
-    demo: false,
-
+    department_id: "",
+    unit_id: "",
     ward_id: "",
     bed_id: "",
     responsible_mo_id: "",
     specialist_id: "",
-
-    admission_datetime: toLocalDateTimeValue(),
-
+    admission_datetime: new Date().toISOString().slice(0, 16),
     reason_for_admission: "",
     brief_summary: "",
     working_diagnosis: "",
@@ -49,138 +78,453 @@ function NewPatientModal({ onClose, onCreated }) {
     baseline_clinical_status: "",
     baseline_investigations: "",
     initial_plan: "",
-    goals_targets: ""
+    goals_targets: "",
+    demo: false,
   });
+
+  const [currentUserId, setCurrentUserId] = useState(null);
 
   useEffect(() => {
     loadOptions();
   }, []);
 
   async function loadOptions() {
-    setLoadingOptions(true);
+    setLoading(true);
     setError("");
 
     try {
-      const [
-        wardsResult,
-        bedsResult,
-        profilesResult
-      ] = await Promise.all([
-        db
-          .from("wards")
-          .select("id,name,department_id,unit_id")
-          .eq("active", true)
-          .order("name"),
-
-        db
-          .from("beds")
-          .select("id,name,ward_id")
-          .eq("active", true)
-          .order("name"),
-
-        db
-          .from("profiles")
-          .select(
-            "id,display_name,email,role,department_id,active"
-          )
-          .eq("active", true)
-          .order("display_name")
-      ]);
-
-      if (wardsResult.error) {
-        throw wardsResult.error;
-      }
-
-      if (bedsResult.error) {
-        throw bedsResult.error;
-      }
-
-      if (profilesResult.error) {
-        throw profilesResult.error;
-      }
-
-      const loadedWards = wardsResult.data || [];
-      const loadedBeds = bedsResult.data || [];
-      const profiles = profilesResult.data || [];
-
-      setWards(loadedWards);
-      setBeds(loadedBeds);
-
-      const mos = profiles.filter(
-        (profile) =>
-          profile.role === "medical_officer"
-      );
-
-      const specs = profiles.filter(
-        (profile) =>
-          ["specialist", "consultant"].includes(
-            profile.role
-          )
-      );
-
-      setMedicalOfficers(mos);
-      setSpecialists(specs);
-
       const {
-        data: { user }
+        data: { user },
+        error: userError,
       } = await db.auth.getUser();
 
-      if (user) {
-        const currentProfile = profiles.find(
-          (profile) =>
-            profile.id === user.id
+      if (userError) throw userError;
+
+      if (!user) {
+        throw new Error("No authenticated user found.");
+      }
+
+      setCurrentUserId(user.id);
+
+      /*
+       * 1. Get the current user's active Unit assignments.
+       *    Clinical scope comes from user_department_roles,
+       *    not from the legacy profiles.role field.
+       */
+      const { data: myRoles, error: rolesError } = await db
+        .from("user_department_roles")
+        .select(
+          `
+          id,
+          user_id,
+          department_role_id,
+          unit_id,
+          active,
+          start_at,
+          end_at,
+          department_roles (
+            id,
+            department_id,
+            code,
+            name,
+            active
+          )
+        `
+        )
+        .eq("user_id", user.id)
+        .eq("active", true);
+
+      if (rolesError) throw rolesError;
+
+      const validRoles = (myRoles || []).filter((r) => {
+        if (!r.active) return false;
+
+        const now = new Date();
+
+        if (r.start_at && new Date(r.start_at) > now) return false;
+        if (r.end_at && new Date(r.end_at) < now) return false;
+
+        if (r.department_roles && !r.department_roles.active) {
+          return false;
+        }
+
+        return true;
+      });
+
+      const unitIds = [
+        ...new Set(
+          validRoles
+            .map((r) => r.unit_id)
+            .filter(Boolean)
+        ),
+      ];
+
+      setAccessibleUnitIds(unitIds);
+
+      /*
+       * 2. Departments.
+       */
+      const { data: departmentData, error: departmentError } = await db
+        .from("departments")
+        .select("id,name,hospital_id,active")
+        .eq("active", true)
+        .order("name");
+
+      if (departmentError) throw departmentError;
+
+      /*
+       * 3. Units.
+       */
+      const { data: unitData, error: unitError } = await db
+        .from("units")
+        .select(
+          "id,name,code,department_id,unit_type,coverage,active"
+        )
+        .eq("active", true)
+        .order("name");
+
+      if (unitError) throw unitError;
+
+      /*
+       * 4. Wards.
+       */
+      const { data: wardData, error: wardError } = await db
+        .from("wards")
+        .select("id,name,department_id,unit_id,active")
+        .eq("active", true)
+        .order("name");
+
+      if (wardError) throw wardError;
+
+      /*
+       * 5. Beds.
+       * beds currently have no dedicated status column.
+       * Availability will therefore be calculated from active admissions.
+       */
+      const { data: bedData, error: bedError } = await db
+        .from("beds")
+        .select("id,name,ward_id,active")
+        .eq("active", true)
+        .order("name");
+
+      if (bedError) throw bedError;
+
+      /*
+       * 6. Active admissions are used to determine occupied beds.
+       */
+      const { data: activeAdmissions, error: admissionsError } = await db
+        .from("admissions")
+        .select("id,bed_id,status")
+        .in("status", ["active", "inpatient"]);
+
+      if (admissionsError) throw admissionsError;
+
+      const occupiedBedIds = new Set(
+        (activeAdmissions || [])
+          .map((a) => a.bed_id)
+          .filter(Boolean)
+      );
+
+      const bedsWithAvailability = (bedData || []).map((bed) => ({
+        ...bed,
+        available: !occupiedBedIds.has(bed.id),
+      }));
+
+      /*
+       * 7. Active profiles.
+       * We load profiles once, then determine clinical role through
+       * user_department_roles instead of relying on profiles.role.
+       */
+      const { data: profileData, error: profileError } = await db
+        .from("profiles")
+        .select(
+          "id,display_name,email,role,department_id,active"
+        )
+        .eq("active", true)
+        .order("display_name");
+
+      if (profileError) throw profileError;
+
+      /*
+       * 8. Get active role assignments for all users.
+       */
+      const { data: allUserRoles, error: allRolesError } = await db
+        .from("user_department_roles")
+        .select(
+          `
+          id,
+          user_id,
+          department_role_id,
+          unit_id,
+          active,
+          start_at,
+          end_at,
+          department_roles (
+            id,
+            department_id,
+            code,
+            name,
+            active
+          )
+        `
+        )
+        .eq("active", true);
+
+      if (allRolesError) throw allRolesError;
+
+      const now = new Date();
+
+      const validUserRoles = (allUserRoles || []).filter((r) => {
+        if (!r.active) return false;
+
+        if (r.start_at && new Date(r.start_at) > now) return false;
+        if (r.end_at && new Date(r.end_at) < now) return false;
+
+        if (r.department_roles && !r.department_roles.active) {
+          return false;
+        }
+
+        return true;
+      });
+
+      const profileAssignments = {};
+
+      for (const role of validUserRoles) {
+        if (!profileAssignments[role.user_id]) {
+          profileAssignments[role.user_id] = [];
+        }
+
+        profileAssignments[role.user_id].push(role);
+      }
+
+      const enrichedProfiles = (profileData || []).map((profile) => ({
+        ...profile,
+        assignments: profileAssignments[profile.id] || [],
+      }));
+
+      setDepartments(departmentData || []);
+      setUnits(unitData || []);
+      setWards(wardData || []);
+      setBeds(bedsWithAvailability);
+      setProfiles(enrichedProfiles);
+
+      /*
+       * 9. Automatically choose the only accessible Unit.
+       */
+      if (unitIds.length === 1) {
+        const selectedUnit = (unitData || []).find(
+          (u) => u.id === unitIds[0]
         );
 
-        if (
-          currentProfile &&
-          currentProfile.role === "medical_officer"
-        ) {
-          setForm((previous) => ({
-            ...previous,
-            responsible_mo_id: user.id
+        if (selectedUnit) {
+          setForm((prev) => ({
+            ...prev,
+            department_id: selectedUnit.department_id,
+            unit_id: selectedUnit.id,
           }));
         }
       }
-
-      if (loadedWards.length === 1) {
-        setForm((previous) => ({
-          ...previous,
-          ward_id: loadedWards[0].id
-        }));
-      }
     } catch (err) {
-      setError(
-        err?.message ||
-          "Unable to load wards, beds, or clinical staff."
-      );
+      console.error(err);
+      setError(err?.message || "Failed to load admission options.");
     } finally {
-      setLoadingOptions(false);
+      setLoading(false);
     }
   }
 
-  function updateField(field, value) {
-    setForm((previous) => ({
-      ...previous,
-      [field]: value
-    }));
-  }
+  /*
+   * Accessible Units.
+   *
+   * Normal clinical users:
+   *   only units assigned through user_department_roles.
+   *
+   * If no explicit unit assignment exists, do not silently expose
+   * every Unit to the user.
+   */
+  const availableUnits = useMemo(() => {
+    if (accessibleUnitIds.length === 0) return [];
 
+    return units.filter((unit) =>
+      accessibleUnitIds.includes(unit.id)
+    );
+  }, [units, accessibleUnitIds]);
+
+  /*
+   * Departments are derived from accessible Units.
+   */
+  const availableDepartments = useMemo(() => {
+    const ids = new Set(
+      availableUnits.map((unit) => unit.department_id)
+    );
+
+    return departments.filter((department) =>
+      ids.has(department.id)
+    );
+  }, [departments, availableUnits]);
+
+  /*
+   * Unit → Ward.
+   */
+  const availableWards = useMemo(() => {
+    if (!form.unit_id) return [];
+
+    return wards.filter(
+      (ward) =>
+        ward.active &&
+        ward.unit_id === form.unit_id
+    );
+  }, [wards, form.unit_id]);
+
+  /*
+   * Ward → Bed.
+   *
+   * Only active and currently available beds are shown.
+   */
   const availableBeds = useMemo(() => {
-    if (!form.ward_id) {
-      return [];
-    }
+    if (!form.ward_id) return [];
 
     return beds.filter(
       (bed) =>
-        bed.ward_id === form.ward_id
+        bed.active &&
+        bed.ward_id === form.ward_id &&
+        bed.available
     );
   }, [beds, form.ward_id]);
 
-  function handleWardChange(value) {
-    setForm((previous) => ({
-      ...previous,
-      ward_id: value,
-      bed_id: ""
+  /*
+   * Doctors assigned to the selected Unit.
+   *
+   * Medical Officer:
+   * role code/name contains medical officer / MO.
+   *
+   * Specialist:
+   * consultant / specialist / fellow.
+   *
+   * This deliberately avoids the old:
+   * profile.role === "medical_officer"
+   * logic.
+   */
+  const unitProfiles = useMemo(() => {
+    if (!form.unit_id) return [];
+
+    return profiles.filter((profile) =>
+      profile.assignments.some(
+        (assignment) =>
+          assignment.unit_id === form.unit_id
+      )
+    );
+  }, [profiles, form.unit_id]);
+
+  const medicalOfficers = useMemo(() => {
+    return unitProfiles.filter((profile) =>
+      profile.assignments.some((assignment) => {
+        const code = (
+          assignment.department_roles?.code || ""
+        ).toLowerCase();
+
+        const name = (
+          assignment.department_roles?.name || ""
+        ).toLowerCase();
+
+        return (
+          code.includes("medical_officer") ||
+          code.includes("medical officer") ||
+          code === "mo" ||
+          name.includes("medical officer") ||
+          name.includes("medical officer")
+        );
+      })
+    );
+  }, [unitProfiles]);
+
+  const specialists = useMemo(() => {
+    return unitProfiles.filter((profile) =>
+      profile.assignments.some((assignment) => {
+        const code = (
+          assignment.department_roles?.code || ""
+        ).toLowerCase();
+
+        const name = (
+          assignment.department_roles?.name || ""
+        ).toLowerCase();
+
+        return (
+          code.includes("consultant") ||
+          code.includes("specialist") ||
+          code.includes("fellow") ||
+          name.includes("consultant") ||
+          name.includes("specialist") ||
+          name.includes("fellow")
+        );
+      })
+    );
+  }, [unitProfiles]);
+
+  /*
+   * If the current user is a Medical Officer in the selected Unit,
+   * automatically select them.
+   */
+  useEffect(() => {
+    if (!currentUserId || !form.unit_id) return;
+
+    const me = medicalOfficers.find(
+      (profile) => profile.id === currentUserId
+    );
+
+    if (me && !form.responsible_mo_id) {
+      setForm((prev) => ({
+        ...prev,
+        responsible_mo_id: me.id,
+      }));
+    }
+  }, [
+    currentUserId,
+    form.unit_id,
+    form.responsible_mo_id,
+    medicalOfficers,
+  ]);
+
+  function updateField(field, value) {
+    setForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }
+
+  function handleDepartmentChange(departmentId) {
+    setForm((prev) => ({
+      ...prev,
+      department_id: departmentId,
+      unit_id: "",
+      ward_id: "",
+      bed_id: "",
+      responsible_mo_id: "",
+      specialist_id: "",
+    }));
+  }
+
+  function handleUnitChange(unitId) {
+    const unit = availableUnits.find(
+      (item) => item.id === unitId
+    );
+
+    setForm((prev) => ({
+      ...prev,
+      department_id:
+        unit?.department_id || prev.department_id,
+      unit_id: unitId,
+      ward_id: "",
+      bed_id: "",
+      responsible_mo_id: "",
+      specialist_id: "",
+    }));
+  }
+
+  function handleWardChange(wardId) {
+    setForm((prev) => ({
+      ...prev,
+      ward_id: wardId,
+      bed_id: "",
     }));
   }
 
@@ -199,22 +543,23 @@ function NewPatientModal({ onClose, onCreated }) {
       return;
     }
 
-    if (!form.age && form.age !== 0) {
-      setError("Age is required.");
-      return;
-    }
-
-    if (
-      Number.isNaN(Number(form.age)) ||
-      Number(form.age) < 0 ||
-      Number(form.age) > 130
-    ) {
-      setError("Age must be between 0 and 130.");
+    if (!form.age || Number(form.age) < 0) {
+      setError("Valid patient age is required.");
       return;
     }
 
     if (!form.sex) {
       setError("Sex is required.");
+      return;
+    }
+
+    if (!form.department_id) {
+      setError("Department is required.");
+      return;
+    }
+
+    if (!form.unit_id) {
+      setError("Unit is required.");
       return;
     }
 
@@ -224,1354 +569,871 @@ function NewPatientModal({ onClose, onCreated }) {
     }
 
     if (!form.reason_for_admission.trim()) {
-      setError(
-        "Reason for admission is required."
-      );
+      setError("Reason for admission is required.");
       return;
     }
 
     if (!form.responsible_mo_id) {
-      setError(
-        "Responsible Medical Officer is required."
-      );
+      setError("Responsible Medical Officer is required.");
       return;
     }
 
-    const selectedWard = wards.find(
-      (ward) =>
-        ward.id === form.ward_id
+    const selectedUnit = availableUnits.find(
+      (unit) => unit.id === form.unit_id
     );
 
+    const selectedWard = availableWards.find(
+      (ward) => ward.id === form.ward_id
+    );
+
+    if (!selectedUnit) {
+      setError("Selected Unit is not accessible.");
+      return;
+    }
+
     if (!selectedWard) {
-      setError(
-        "The selected ward could not be found."
-      );
+      setError("Selected Ward does not belong to this Unit.");
       return;
     }
 
-    if (
-      !selectedWard.unit_id ||
-      !selectedWard.department_id
-    ) {
-      setError(
-        "The selected ward is not linked to a clinical unit and department."
+    if (form.bed_id) {
+      const selectedBed = availableBeds.find(
+        (bed) => bed.id === form.bed_id
       );
-      return;
-    }
 
-    setSaving(true);
+      if (!selectedBed) {
+        setError(
+          "The selected bed is no longer available. Please select another bed."
+        );
+        return;
+      }
+    }
 
     try {
-      const { data: created, error: createError } =
-        await db.rpc(
-          "prism_create_patient_admission",
+      setSaving(true);
+
+      /*
+       * Step 1:
+       * Create Patient + Admission through the canonical RPC.
+       */
+      const { data, error: rpcError } = await db.rpc(
+        "prism_create_patient_admission",
+        {
+          p_patient_code: form.patient_code.trim(),
+          p_full_name: form.full_name.trim(),
+          p_age: Number(form.age),
+          p_sex: form.sex,
+          p_admission_datetime:
+            form.admission_datetime
+              ? new Date(form.admission_datetime).toISOString()
+              : new Date().toISOString(),
+          p_reason_for_admission:
+            form.reason_for_admission.trim(),
+          p_working_diagnosis:
+            form.working_diagnosis.trim() || null,
+          p_department_id: form.department_id,
+          p_unit_id: form.unit_id,
+          p_ward_id: form.ward_id,
+          p_bed_id: form.bed_id || null,
+          p_responsible_mo_id:
+            form.responsible_mo_id,
+          p_specialist_id:
+            form.specialist_id || null,
+        }
+      );
+
+      if (rpcError) throw rpcError;
+
+      if (!data?.patient_id || !data?.admission_id) {
+        throw new Error(
+          "Admission was not created correctly."
+        );
+      }
+
+      /*
+       * Step 2:
+       * Save the additional Admission Clinical Data.
+       *
+       * These fields are intentionally saved separately because
+       * prism_create_patient_admission does not contain them.
+       */
+      const hasClinicalData =
+        form.brief_summary.trim() ||
+        form.working_diagnosis.trim() ||
+        form.relevant_background.trim() ||
+        form.baseline_clinical_status.trim() ||
+        form.baseline_investigations.trim() ||
+        form.initial_plan.trim() ||
+        form.goals_targets.trim();
+
+      if (hasClinicalData) {
+        const { error: clinicalError } = await db.rpc(
+          "prism_update_admission_clinical",
           {
-            p_patient_code:
-              form.patient_code.trim(),
-
-            p_full_name:
-              form.full_name.trim(),
-
-            p_age:
-              Number(form.age),
-
-            p_sex:
-              form.sex,
-
-            p_admission_datetime:
-              form.admission_datetime
-                ? new Date(
-                    form.admission_datetime
-                  ).toISOString()
-                : new Date().toISOString(),
-
-            p_reason_for_admission:
-              form.reason_for_admission.trim(),
-
+            p_admission_id: data.admission_id,
+            p_brief_summary:
+              form.brief_summary.trim() || null,
             p_working_diagnosis:
-              form.working_diagnosis.trim() ||
-              null,
-
-            p_department_id:
-              selectedWard.department_id,
-
-            p_unit_id:
-              selectedWard.unit_id,
-
-            p_ward_id:
-              form.ward_id,
-
-            p_bed_id:
-              form.bed_id || null,
-
-            p_responsible_mo_id:
-              form.responsible_mo_id,
-
-            p_specialist_id:
-              form.specialist_id || null
+              form.working_diagnosis.trim() || null,
+            p_relevant_background:
+              form.relevant_background.trim() || null,
+            p_baseline_clinical_status:
+              form.baseline_clinical_status.trim() || null,
+            p_baseline_investigations:
+              form.baseline_investigations.trim() || null,
+            p_initial_plan:
+              form.initial_plan.trim() || null,
+            p_goals_targets:
+              form.goals_targets.trim() || null,
           }
         );
 
-      if (createError) {
-        throw createError;
+        if (clinicalError) {
+          /*
+           * The admission itself already exists.
+           * Surface the clinical-data problem rather than pretending
+           * the entire creation failed.
+           */
+          console.error(
+            "Admission created but clinical data update failed:",
+            clinicalError
+          );
+
+          setError(
+            `Admission ${data.admission_number || ""} was created, but the additional clinical data could not be saved.`
+          );
+
+          setTimeout(() => {
+            onCreated?.(data);
+            onClose?.();
+          }, 1200);
+
+          return;
+        }
       }
 
-      if (
-        !created?.patient_id ||
-        !created?.admission_id
-      ) {
-        throw new Error(
-          "The server did not return the created patient and admission."
-        );
-      }
-
-      if (onCreated) {
-        await onCreated();
-      }
-
-      onClose();
+      onCreated?.(data);
+      onClose?.();
     } catch (err) {
+      console.error(err);
+
       setError(
         err?.message ||
-          "Unable to create patient and admission."
+          "Failed to create the patient admission."
       );
     } finally {
       setSaving(false);
     }
   }
 
-  return React.createElement(
-    "div",
-    {
-      className: "modal-backdrop",
-      onMouseDown: (event) => {
-        if (
-          event.target ===
-          event.currentTarget
-        ) {
-          onClose();
-        }
-      }
-    },
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+          <div className="text-sm text-slate-600">
+            Loading admission options...
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-    React.createElement(
-      "div",
-      {
-        className: "modal",
-        role: "dialog",
-        "aria-modal": "true"
-      },
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4">
+      <div className="mx-auto my-4 w-full max-w-4xl rounded-2xl bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-5 py-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">
+              New Patient Admission
+            </h2>
+            <p className="text-xs text-slate-500">
+              Department → Unit → Ward → Bed
+            </p>
+          </div>
 
-      React.createElement(
-        "div",
-        {
-          className: "modal-header"
-        },
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-100"
+          >
+            Close
+          </button>
+        </div>
 
-        React.createElement(
-          "div",
-          null,
+        <form onSubmit={submit} className="p-5">
+          {error && (
+            <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
 
-          React.createElement(
-            "div",
-            {
-              className: "modal-title"
-            },
-            "New Patient"
-          ),
+          <div className="space-y-7">
+            {/* BASIC DATA */}
+            <section>
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Patient
+              </h3>
 
-          React.createElement(
-            "div",
-            {
-              className: "page-subtitle"
-            },
-            "Create patient and active admission"
-          )
-        ),
-
-        React.createElement(
-          "button",
-          {
-            type: "button",
-            className:
-              "btn btn-secondary",
-            onClick: onClose,
-            disabled: saving
-          },
-          "Close"
-        )
-      ),
-
-      loadingOptions
-        ? React.createElement(
-            "div",
-            {
-              className: "loading"
-            },
-            "Loading clinical options..."
-          )
-        : React.createElement(
-            "form",
-            {
-              onSubmit: submit
-            },
-
-            error
-              ? React.createElement(
-                  "div",
-                  {
-                    className:
-                      "alert alert-error",
-                    style: {
-                      marginBottom: "16px"
-                    }
-                  },
-                  error
-                )
-              : null,
-
-            React.createElement(
-              "div",
-              {
-                className: "section-title"
-              },
-              "Patient Identity"
-            ),
-
-            React.createElement(
-              "div",
-              {
-                className: "form-grid"
-              },
-
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
-
-                React.createElement(
-                  "label",
-                  null,
-                  "Patient Code *"
-                ),
-
-                React.createElement(
-                  "input",
-                  {
-                    value:
-                      form.patient_code,
-                    onChange: (e) =>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Patient Code" required>
+                  <Input
+                    value={form.patient_code}
+                    onChange={(e) =>
                       updateField(
                         "patient_code",
                         e.target.value
-                      ),
-                    placeholder:
-                      "e.g. PT-0001",
-                    required: true
-                  }
-                )
-              ),
+                      )
+                    }
+                    placeholder="Patient code"
+                  />
+                </Field>
 
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
-
-                React.createElement(
-                  "label",
-                  null,
-                  "Full Name *"
-                ),
-
-                React.createElement(
-                  "input",
-                  {
-                    value:
-                      form.full_name,
-                    onChange: (e) =>
+                <Field label="Full Name" required>
+                  <Input
+                    value={form.full_name}
+                    onChange={(e) =>
                       updateField(
                         "full_name",
                         e.target.value
-                      ),
-                    placeholder:
-                      "Patient full name",
-                    required: true
-                  }
-                )
-              ),
+                      )
+                    }
+                    placeholder="Full name"
+                  />
+                </Field>
 
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
-
-                React.createElement(
-                  "label",
-                  null,
-                  "Age *"
-                ),
-
-                React.createElement(
-                  "input",
-                  {
-                    type: "number",
-                    min: "0",
-                    max: "130",
-                    value: form.age,
-                    onChange: (e) =>
+                <Field label="Age" required>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={form.age}
+                    onChange={(e) =>
                       updateField(
                         "age",
                         e.target.value
-                      ),
-                    placeholder:
-                      "Age",
-                    required: true
-                  }
-                )
-              ),
+                      )
+                    }
+                  />
+                </Field>
 
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
-
-                React.createElement(
-                  "label",
-                  null,
-                  "Sex *"
-                ),
-
-                React.createElement(
-                  "select",
-                  {
-                    value: form.sex,
-                    onChange: (e) =>
+                <Field label="Sex" required>
+                  <Select
+                    value={form.sex}
+                    onChange={(e) =>
                       updateField(
                         "sex",
                         e.target.value
-                      ),
-                    required: true
-                  },
+                      )
+                    }
+                  >
+                    <option value="">
+                      Select sex
+                    </option>
+                    <option value="male">
+                      Male
+                    </option>
+                    <option value="female">
+                      Female
+                    </option>
+                  </Select>
+                </Field>
 
-                  React.createElement(
-                    "option",
-                    {
-                      value: ""
-                    },
-                    "Select sex"
-                  ),
+                <Field label="Admission Date & Time">
+                  <Input
+                    type="datetime-local"
+                    value={form.admission_datetime}
+                    onChange={(e) =>
+                      updateField(
+                        "admission_datetime",
+                        e.target.value
+                      )
+                    }
+                  />
+                </Field>
 
-                  React.createElement(
-                    "option",
-                    {
-                      value: "male"
-                    },
-                    "Male"
-                  ),
+                <label className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5">
+                  <input
+                    type="checkbox"
+                    checked={form.demo}
+                    onChange={(e) =>
+                      updateField(
+                        "demo",
+                        e.target.checked
+                      )
+                    }
+                    className="h-4 w-4"
+                  />
 
-                  React.createElement(
-                    "option",
-                    {
-                      value: "female"
-                    },
-                    "Female"
-                  ),
+                  <span>
+                    <span className="block text-sm font-medium text-slate-700">
+                      Demo / Training Patient
+                    </span>
+                    <span className="block text-xs text-slate-500">
+                      Mark this patient as a non-real training record.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </section>
 
-                  React.createElement(
-                    "option",
-                    {
-                      value: "other"
-                    },
-                    "Other"
-                  ),
+            {/* LOCATION / RESPONSIBILITY */}
+            <section>
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Clinical Location & Responsibility
+              </h3>
 
-                  React.createElement(
-                    "option",
-                    {
-                      value: "unknown"
-                    },
-                    "Unknown"
-                  )
-                )
-              )
-            ),
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Department" required>
+                  <Select
+                    value={form.department_id}
+                    onChange={(e) =>
+                      handleDepartmentChange(
+                        e.target.value
+                      )
+                    }
+                  >
+                    <option value="">
+                      Select Department
+                    </option>
 
-            React.createElement(
-              "label",
-              {
-                className:
-                  "checkbox-row"
-              },
+                    {availableDepartments.map(
+                      (department) => (
+                        <option
+                          key={department.id}
+                          value={department.id}
+                        >
+                          {department.name}
+                        </option>
+                      )
+                    )}
+                  </Select>
+                </Field>
 
-              React.createElement(
-                "input",
-                {
-                  type: "checkbox",
-                  checked: form.demo,
-                  onChange: (e) =>
-                    updateField(
-                      "demo",
-                      e.target.checked
-                    )
-                }
-              ),
+                <Field label="Unit" required>
+                  <Select
+                    value={form.unit_id}
+                    onChange={(e) =>
+                      handleUnitChange(
+                        e.target.value
+                      )
+                    }
+                    disabled={
+                      !form.department_id
+                    }
+                  >
+                    <option value="">
+                      {form.department_id
+                        ? "Select Unit"
+                        : "Select Department first"}
+                    </option>
 
-              React.createElement(
-                "span",
-                null,
-                "Demo patient"
-              )
-            ),
+                    {availableUnits
+                      .filter(
+                        (unit) =>
+                          !form.department_id ||
+                          unit.department_id ===
+                            form.department_id
+                      )
+                      .map((unit) => (
+                        <option
+                          key={unit.id}
+                          value={unit.id}
+                        >
+                          {unit.name}
+                        </option>
+                      ))}
+                  </Select>
+                </Field>
 
-            React.createElement(
-              "div",
-              {
-                className:
-                  "section-title",
-                style: {
-                  marginTop: "24px"
-                }
-              },
-              "Admission"
-            ),
-
-            React.createElement(
-              "div",
-              {
-                className: "form-grid"
-              },
-
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
-
-                React.createElement(
-                  "label",
-                  null,
-                  "Ward *"
-                ),
-
-                React.createElement(
-                  "select",
-                  {
-                    value:
-                      form.ward_id,
-                    onChange: (e) =>
+                <Field label="Ward" required>
+                  <Select
+                    value={form.ward_id}
+                    onChange={(e) =>
                       handleWardChange(
                         e.target.value
-                      ),
-                    required: true
-                  },
+                      )
+                    }
+                    disabled={!form.unit_id}
+                  >
+                    <option value="">
+                      {form.unit_id
+                        ? "Select Ward"
+                        : "Select Unit first"}
+                    </option>
 
-                  React.createElement(
-                    "option",
-                    {
-                      value: ""
-                    },
-                    "Select ward"
-                  ),
+                    {availableWards.map((ward) => (
+                      <option
+                        key={ward.id}
+                        value={ward.id}
+                      >
+                        {ward.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
 
-                  wards.map((ward) =>
-                    React.createElement(
-                      "option",
-                      {
-                        key: ward.id,
-                        value: ward.id
-                      },
-                      ward.name
-                    )
-                  )
-                )
-              ),
-
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
-
-                React.createElement(
-                  "label",
-                  null,
-                  "Bed"
-                ),
-
-                React.createElement(
-                  "select",
-                  {
-                    value:
-                      form.bed_id,
-                    onChange: (e) =>
+                <Field label="Bed">
+                  <Select
+                    value={form.bed_id}
+                    onChange={(e) =>
                       updateField(
                         "bed_id",
                         e.target.value
-                      ),
-                    disabled:
-                      !form.ward_id
-                  },
-
-                  React.createElement(
-                    "option",
-                    {
-                      value: ""
-                    },
-                    form.ward_id
-                      ? "Select bed"
-                      : "Select ward first"
-                  ),
-
-                  availableBeds.map(
-                    (bed) =>
-                      React.createElement(
-                        "option",
-                        {
-                          key: bed.id,
-                          value: bed.id
-                        },
-                        bed.name
                       )
-                  )
-                )
-              ),
+                    }
+                    disabled={!form.ward_id}
+                  >
+                    <option value="">
+                      {form.ward_id
+                        ? "No bed / assign later"
+                        : "Select Ward first"}
+                    </option>
 
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
+                    {availableBeds.map((bed) => (
+                      <option
+                        key={bed.id}
+                        value={bed.id}
+                      >
+                        {bed.name} — Available
+                      </option>
+                    ))}
+                  </Select>
 
-                React.createElement(
-                  "label",
-                  null,
-                  "Responsible Medical Officer *"
-                ),
+                  {form.ward_id &&
+                    availableBeds.length === 0 && (
+                      <p className="mt-1 text-xs text-amber-600">
+                        No available beds in this Ward.
+                      </p>
+                    )}
+                </Field>
 
-                React.createElement(
-                  "select",
-                  {
-                    value:
-                      form.responsible_mo_id,
-                    onChange: (e) =>
+                <Field label="Responsible Medical Officer" required>
+                  <Select
+                    value={form.responsible_mo_id}
+                    onChange={(e) =>
                       updateField(
                         "responsible_mo_id",
                         e.target.value
-                      ),
-                    required: true
-                  },
-
-                  React.createElement(
-                    "option",
-                    {
-                      value: ""
-                    },
-                    "Select Medical Officer"
-                  ),
-
-                  medicalOfficers.map(
-                    (profile) =>
-                      React.createElement(
-                        "option",
-                        {
-                          key: profile.id,
-                          value: profile.id
-                        },
-                        profile.display_name ||
-                          profile.email ||
-                          "Medical Officer"
                       )
-                  )
-                )
-              ),
+                    }
+                    disabled={!form.unit_id}
+                  >
+                    <option value="">
+                      {form.unit_id
+                        ? "Select Medical Officer"
+                        : "Select Unit first"}
+                    </option>
 
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
+                    {medicalOfficers.map(
+                      (profile) => (
+                        <option
+                          key={profile.id}
+                          value={profile.id}
+                        >
+                          {profile.display_name ||
+                            profile.email}
+                        </option>
+                      )
+                    )}
+                  </Select>
 
-                React.createElement(
-                  "label",
-                  null,
-                  "Specialist"
-                ),
+                  {form.unit_id &&
+                    medicalOfficers.length ===
+                      0 && (
+                      <p className="mt-1 text-xs text-amber-600">
+                        No Medical Officer is assigned to this Unit.
+                      </p>
+                    )}
+                </Field>
 
-                React.createElement(
-                  "select",
-                  {
-                    value:
-                      form.specialist_id,
-                    onChange: (e) =>
+                <Field label="Consultant / Specialist">
+                  <Select
+                    value={form.specialist_id}
+                    onChange={(e) =>
                       updateField(
                         "specialist_id",
                         e.target.value
                       )
-                  },
+                    }
+                    disabled={!form.unit_id}
+                  >
+                    <option value="">
+                      {form.unit_id
+                        ? "Select Consultant / Specialist"
+                        : "Select Unit first"}
+                    </option>
 
-                  React.createElement(
-                    "option",
-                    {
-                      value: ""
-                    },
-                    "Not assigned"
-                  ),
-
-                  specialists.map(
-                    (profile) =>
-                      React.createElement(
-                        "option",
-                        {
-                          key: profile.id,
-                          value: profile.id
-                        },
-                        profile.display_name ||
-                          profile.email ||
-                          "Consultant / Specialist"
+                    {specialists.map(
+                      (profile) => (
+                        <option
+                          key={profile.id}
+                          value={profile.id}
+                        >
+                          {profile.display_name ||
+                            profile.email}
+                        </option>
                       )
-                  )
-                )
-              ),
+                    )}
+                  </Select>
 
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
+                  {form.unit_id &&
+                    specialists.length === 0 && (
+                      <p className="mt-1 text-xs text-amber-600">
+                        No Consultant/Specialist is assigned to this Unit.
+                      </p>
+                    )}
+                </Field>
+              </div>
+            </section>
 
-                React.createElement(
-                  "label",
-                  null,
-                  "Admission Date & Time *"
-                ),
+            {/* ADMISSION */}
+            <section>
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Admission
+              </h3>
 
-                React.createElement(
-                  "input",
-                  {
-                    type:
-                      "datetime-local",
-                    value:
-                      form.admission_datetime,
-                    onChange: (e) =>
-                      updateField(
-                        "admission_datetime",
-                        e.target.value
-                      ),
-                    required: true
-                  }
-                )
-              ),
-
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
-
-                React.createElement(
-                  "label",
-                  null,
-                  "Reason for Admission *"
-                ),
-
-                React.createElement(
-                  "input",
-                  {
-                    value:
-                      form.reason_for_admission,
-                    onChange: (e) =>
+              <div className="grid gap-4">
+                <Field
+                  label="Reason for Admission"
+                  required
+                >
+                  <Textarea
+                    value={
+                      form.reason_for_admission
+                    }
+                    onChange={(e) =>
                       updateField(
                         "reason_for_admission",
                         e.target.value
-                      ),
-                    placeholder:
-                      "Why is the patient being admitted?",
-                    required: true
-                  }
-                )
-              )
-            ),
+                      )
+                    }
+                    placeholder="Why is the patient being admitted?"
+                  />
+                </Field>
 
-            React.createElement(
-              "div",
-              {
-                className:
-                  "section-title",
-                style: {
-                  marginTop: "24px"
-                }
-              },
-              "Admission Baseline"
-            ),
-
-            React.createElement(
-              "div",
-              {
-                className: "form-grid"
-              },
-
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
-
-                React.createElement(
-                  "label",
-                  null,
-                  "Brief Summary"
-                ),
-
-                React.createElement(
-                  "textarea",
-                  {
-                    value:
-                      form.brief_summary,
-                    onChange: (e) =>
+                <Field label="Brief Summary">
+                  <Textarea
+                    value={form.brief_summary}
+                    onChange={(e) =>
                       updateField(
                         "brief_summary",
                         e.target.value
-                      ),
-                    rows: 3
-                  }
-                )
-              ),
+                      )
+                    }
+                    placeholder="Brief admission summary"
+                  />
+                </Field>
 
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
-
-                React.createElement(
-                  "label",
-                  null,
-                  "Working Diagnosis"
-                ),
-
-                React.createElement(
-                  "textarea",
-                  {
-                    value:
-                      form.working_diagnosis,
-                    onChange: (e) =>
+                <Field label="Working Diagnosis">
+                  <Textarea
+                    value={
+                      form.working_diagnosis
+                    }
+                    onChange={(e) =>
                       updateField(
                         "working_diagnosis",
                         e.target.value
-                      ),
-                    rows: 3
-                  }
-                )
-              ),
+                      )
+                    }
+                    placeholder="Primary / working diagnosis"
+                  />
+                </Field>
 
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
-
-                React.createElement(
-                  "label",
-                  null,
-                  "Relevant Background"
-                ),
-
-                React.createElement(
-                  "textarea",
-                  {
-                    value:
-                      form.relevant_background,
-                    onChange: (e) =>
+                <Field label="Relevant Background">
+                  <Textarea
+                    value={
+                      form.relevant_background
+                    }
+                    onChange={(e) =>
                       updateField(
                         "relevant_background",
                         e.target.value
-                      ),
-                    rows: 3
-                  }
-                )
-              ),
+                      )
+                    }
+                    placeholder="Relevant history and comorbidities"
+                  />
+                </Field>
 
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
-
-                React.createElement(
-                  "label",
-                  null,
-                  "Baseline Clinical Status"
-                ),
-
-                React.createElement(
-                  "textarea",
-                  {
-                    value:
-                      form.baseline_clinical_status,
-                    onChange: (e) =>
+                <Field label="Baseline Clinical Status">
+                  <Textarea
+                    value={
+                      form.baseline_clinical_status
+                    }
+                    onChange={(e) =>
                       updateField(
                         "baseline_clinical_status",
                         e.target.value
-                      ),
-                    rows: 3
-                  }
-                )
-              ),
+                      )
+                    }
+                    placeholder="Baseline clinical status"
+                  />
+                </Field>
 
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
-
-                React.createElement(
-                  "label",
-                  null,
-                  "Baseline Investigations"
-                ),
-
-                React.createElement(
-                  "textarea",
-                  {
-                    value:
-                      form.baseline_investigations,
-                    onChange: (e) =>
+                <Field label="Baseline Investigations">
+                  <Textarea
+                    value={
+                      form.baseline_investigations
+                    }
+                    onChange={(e) =>
                       updateField(
                         "baseline_investigations",
                         e.target.value
-                      ),
-                    rows: 3
-                  }
-                )
-              ),
+                      )
+                    }
+                    placeholder="Important baseline investigations"
+                  />
+                </Field>
 
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
-
-                React.createElement(
-                  "label",
-                  null,
-                  "Initial Plan"
-                ),
-
-                React.createElement(
-                  "textarea",
-                  {
-                    value:
-                      form.initial_plan,
-                    onChange: (e) =>
+                <Field label="Initial Plan">
+                  <Textarea
+                    value={form.initial_plan}
+                    onChange={(e) =>
                       updateField(
                         "initial_plan",
                         e.target.value
-                      ),
-                    rows: 3
-                  }
-                )
-              ),
+                      )
+                    }
+                    placeholder="Initial management plan"
+                  />
+                </Field>
 
-              React.createElement(
-                "div",
-                {
-                  className: "field"
-                },
-
-                React.createElement(
-                  "label",
-                  null,
-                  "Goals / Targets"
-                ),
-
-                React.createElement(
-                  "textarea",
-                  {
-                    value:
-                      form.goals_targets,
-                    onChange: (e) =>
+                <Field label="Goals / Targets">
+                  <Textarea
+                    value={form.goals_targets}
+                    onChange={(e) =>
                       updateField(
                         "goals_targets",
                         e.target.value
-                      ),
-                    rows: 3
-                  }
-                )
-              )
-            ),
+                      )
+                    }
+                    placeholder="Clinical goals and targets"
+                  />
+                </Field>
+              </div>
+            </section>
+          </div>
 
-            React.createElement(
-              "div",
-              {
-                className: "row wrap",
-                style: {
-                  justifyContent:
-                    "flex-end",
-                  marginTop: "24px",
-                  gap: "10px"
-                }
-              },
+          <div className="mt-7 flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
 
-              React.createElement(
-                "button",
-                {
-                  type: "button",
-                  className:
-                    "btn btn-secondary",
-                  onClick: onClose,
-                  disabled: saving
-                },
-                "Cancel"
-              ),
-
-              React.createElement(
-                "button",
-                {
-                  type: "submit",
-                  className:
-                    "btn btn-primary",
-                  disabled: saving
-                },
-                saving
-                  ? "Creating..."
-                  : "Create Patient & Admission"
-              )
-            )
-          )
-    )
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving
+                ? "Creating Admission..."
+                : "Create Admission"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
-export default function Patients({
-  patients,
-  loading,
-  onRefresh,
-  onOpenPatient
-}) {
-  const [search, setSearch] =
-    useState("");
+export default function Patients() {
+  const [patients, setPatients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showNewPatient, setShowNewPatient] =
+    useState(false);
+  const [error, setError] = useState("");
 
-  const [
-    showNewPatient,
-    setShowNewPatient
-  ] = useState(false);
+  async function loadPatients() {
+    setLoading(true);
+    setError("");
 
-  const filteredPatients =
-    useMemo(() => {
-      const term =
-        search.trim().toLowerCase();
+    try {
+      const { data, error: queryError } =
+        await db
+          .from("admissions")
+          .select(
+            `
+            id,
+            admission_number,
+            admission_datetime,
+            status,
+            ward_id,
+            bed_id,
+            unit_id,
+            working_diagnosis,
+            patients (
+              id,
+              patient_code,
+              full_name,
+              age,
+              sex
+            )
+          `
+          )
+          .in("status", ["active", "inpatient"])
+          .order("admission_datetime", {
+            ascending: false,
+          });
 
-      if (!term) {
-        return patients;
-      }
+      if (queryError) throw queryError;
 
-      return patients.filter(
-        (patient) => {
-          const code =
-            String(
-              patient.patient_code ||
-                ""
-            ).toLowerCase();
-
-          const name =
-            String(
-              patient.full_name ||
-                ""
-            ).toLowerCase();
-
-          return (
-            name.includes(term) ||
-            code.includes(term)
-          );
-        }
+      setPatients(data || []);
+    } catch (err) {
+      console.error(err);
+      setError(
+        err?.message ||
+          "Failed to load patients."
       );
-    }, [patients, search]);
-
-  async function handleCreated() {
-    if (onRefresh) {
-      await onRefresh();
+    } finally {
+      setLoading(false);
     }
   }
 
-  return React.createElement(
-    React.Fragment,
-    null,
+  useEffect(() => {
+    loadPatients();
+  }, []);
 
-    React.createElement(
-      "div",
-      {
-        className: "row wrap"
-      },
+  return (
+    <div className="min-h-full bg-slate-50 p-4 md:p-6">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-900">
+              Patients
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Active inpatient admissions
+            </p>
+          </div>
 
-      React.createElement(
-        "div",
-        null,
-
-        React.createElement(
-          "div",
-          {
-            className:
-              "page-title"
-          },
-          "Patients"
-        ),
-
-        React.createElement(
-          "div",
-          {
-            className:
-              "page-subtitle"
-          },
-          "Patient and admission overview"
-        )
-      ),
-
-      React.createElement(
-        "div",
-        {
-          className: "row wrap",
-          style: {
-            gap: "8px"
-          }
-        },
-
-        React.createElement(
-          "button",
-          {
-            className:
-              "btn btn-primary",
-            onClick: () =>
-              setShowNewPatient(
-                true
-              )
-          },
-          "+ New Patient"
-        ),
-
-        React.createElement(
-          "button",
-          {
-            className:
-              "btn btn-secondary",
-            onClick: onRefresh,
-            disabled: loading
-          },
-          loading
-            ? "Refreshing..."
-            : "Refresh"
-        )
-      )
-    ),
-
-    React.createElement(
-      "div",
-      {
-        className: "card"
-      },
-
-      React.createElement(
-        "div",
-        {
-          className: "field"
-        },
-
-        React.createElement(
-          "label",
-          null,
-          "Search"
-        ),
-
-        React.createElement(
-          "input",
-          {
-            type: "search",
-            value: search,
-            onChange: (e) =>
-              setSearch(
-                e.target.value
-              ),
-            placeholder:
-              "Search patient or patient code"
-          }
-        )
-      )
-    ),
-
-    loading
-      ? React.createElement(
-          "div",
-          {
-            className: "loading"
-          },
-          "Loading patients..."
-        )
-      : filteredPatients.length ===
-        0
-      ? React.createElement(
-          "div",
-          {
-            className: "card"
-          },
-
-          React.createElement(
-            "div",
-            {
-              className: "empty"
-            },
-
-            search
-              ? "No patients match your search."
-              : "No patients found."
-          )
-        )
-      : React.createElement(
-          "div",
-          {
-            className:
-              "grid grid-2"
-          },
-
-          filteredPatients.map(
-            (patient) => {
-              const admissions =
-                patient.admissions ||
-                [];
-
-              const activeAdmission =
-                admissions.find(
-                  (admission) =>
-                    admission.status ===
-                    "active"
-                ) ||
-                admissions[0];
-
-              return React.createElement(
-                "div",
-                {
-                  key: patient.id,
-                  className:
-                    "card patient-card",
-                  onClick: () =>
-                    onOpenPatient(
-                      patient
-                    )
-                },
-
-                React.createElement(
-                  "div",
-                  {
-                    className:
-                      "row wrap"
-                  },
-
-                  React.createElement(
-                    "div",
-                    null,
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "patient-name"
-                      },
-                      patient.full_name ||
-                        "Unnamed patient"
-                    ),
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "muted small"
-                      },
-                      patient.patient_code ||
-                        "No patient code"
-                    )
-                  ),
-
-                  patient.demo
-                    ? React.createElement(
-                        "span",
-                        {
-                          className:
-                            "badge badge-improving"
-                        },
-                        "Demo"
-                      )
-                    : null
-                ),
-
-                React.createElement(
-                  "div",
-                  {
-                    className:
-                      "detail-grid",
-                    style: {
-                      marginTop:
-                        "14px"
-                    }
-                  },
-
-                  React.createElement(
-                    "div",
-                    {
-                      className:
-                        "detail-box"
-                    },
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "detail-label"
-                      },
-                      "Age / Sex"
-                    ),
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "detail-value"
-                      },
-                      `${patient.age ?? "—"} / ${
-                        patient.sex ||
-                        "—"
-                      }`
-                    )
-                  ),
-
-                  React.createElement(
-                    "div",
-                    {
-                      className:
-                        "detail-box"
-                    },
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "detail-label"
-                      },
-                      "Admission Status"
-                    ),
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "detail-value"
-                      },
-                      activeAdmission?.status ||
-                        "—"
-                    )
-                  ),
-
-                  React.createElement(
-                    "div",
-                    {
-                      className:
-                        "detail-box"
-                    },
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "detail-label"
-                      },
-                      "Ward"
-                    ),
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "detail-value"
-                      },
-                      activeAdmission?.ward_id ||
-                        "—"
-                    )
-                  ),
-
-                  React.createElement(
-                    "div",
-                    {
-                      className:
-                        "detail-box"
-                    },
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "detail-label"
-                      },
-                      "Bed"
-                    ),
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "detail-value"
-                      },
-                      activeAdmission?.bed_id ||
-                        "—"
-                    )
-                  )
-                ),
-
-                React.createElement(
-                  "div",
-                  {
-                    style: {
-                      marginTop:
-                        "14px"
-                    }
-                  },
-
-                  React.createElement(
-                    "div",
-                    {
-                      className:
-                        "detail-label"
-                    },
-                    "Working Diagnosis"
-                  ),
-
-                  React.createElement(
-                    "div",
-                    {
-                      className:
-                        "detail-value"
-                    },
-                    activeAdmission?.working_diagnosis ||
-                      "—"
-                  )
-                )
-              );
+          <button
+            type="button"
+            onClick={() =>
+              setShowNewPatient(true)
             }
-          )
-        ),
+            className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            + New Patient
+          </button>
+        </div>
 
-    showNewPatient
-      ? React.createElement(
-          NewPatientModal,
-          {
-            onClose: () =>
-              setShowNewPatient(
-                false
-              ),
-            onCreated:
-              handleCreated
+        {error && (
+          <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          {loading ? (
+            <div className="p-6 text-sm text-slate-500">
+              Loading patients...
+            </div>
+          ) : patients.length === 0 ? (
+            <div className="p-8 text-center">
+              <div className="text-sm font-medium text-slate-700">
+                No patients found
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                Create a new admission to see patients here.
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="border-b bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">
+                      Admission
+                    </th>
+                    <th className="px-4 py-3">
+                      Patient
+                    </th>
+                    <th className="px-4 py-3">
+                      Age / Sex
+                    </th>
+                    <th className="px-4 py-3">
+                      Diagnosis
+                    </th>
+                    <th className="px-4 py-3">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y">
+                  {patients.map((admission) => {
+                    const patient =
+                      admission.patients;
+
+                    return (
+                      <tr
+                        key={admission.id}
+                        className="hover:bg-slate-50"
+                      >
+                        <td className="px-4 py-4">
+                          <div className="font-medium text-slate-900">
+                            {admission.admission_number ||
+                              "—"}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {admission.admission_datetime
+                              ? new Date(
+                                  admission.admission_datetime
+                                ).toLocaleString()
+                              : "—"}
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <div className="font-medium text-slate-900">
+                            {patient?.full_name ||
+                              "—"}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {patient?.patient_code ||
+                              "—"}
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-4 text-slate-700">
+                          {patient?.age ?? "—"} /{" "}
+                          {patient?.sex || "—"}
+                        </td>
+
+                        <td className="max-w-xs px-4 py-4 text-slate-700">
+                          {admission.working_diagnosis ||
+                            "—"}
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                            {admission.status ||
+                              "active"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showNewPatient && (
+        <NewPatientModal
+          onClose={() =>
+            setShowNewPatient(false)
           }
-        )
-      : null
+          onCreated={() => {
+            setShowNewPatient(false);
+            loadPatients();
+          }}
+        />
+      )}
+    </div>
   );
     }
