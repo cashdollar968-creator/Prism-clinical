@@ -232,6 +232,15 @@ export default function Patient({
 
   /*
    * ========================================================
+   * PDF STATE
+   * ========================================================
+   */
+
+  const [pdfLoading, setPdfLoading] =
+    useState(false);
+
+  /*
+   * ========================================================
    * LOAD PATIENT
    * ========================================================
    */
@@ -663,6 +672,279 @@ export default function Patient({
       await loadSpecialistRequests(
         selectedAdmissionId
       );
+    }
+  }
+
+  /*
+   * ========================================================
+   * DETAILED HANDOVER PDF
+   *
+   * Generates the current admission's Detailed Handover
+   * through the deployed Supabase Edge Function.
+   * ========================================================
+   */
+
+  async function openDetailedHandoverPdf() {
+    const admissionId =
+      selectedAdmission?.admission_id ||
+      selectedAdmission?.id ||
+      selectedAdmissionId;
+
+    if (!admissionId) {
+      setError(
+        "No admission selected."
+      );
+      return;
+    }
+
+    if (pdfLoading) {
+      return;
+    }
+
+    setPdfLoading(true);
+    setError("");
+
+    let pdfUrl = null;
+
+    try {
+      /*
+       * Get the current authenticated Supabase session.
+       */
+
+      const {
+        data: sessionData,
+        error: sessionError
+      } = await db.auth.getSession();
+
+      if (sessionError) {
+        throw sessionError;
+      }
+
+      const currentSession =
+        sessionData?.session;
+
+      if (
+        !currentSession?.access_token
+      ) {
+        throw new Error(
+          "Your session has expired. Please log in again."
+        );
+      }
+
+      /*
+       * Deployed PRISM PDF Edge Function.
+       */
+
+      const functionUrl =
+        "https://rcikgkdesnlfewkfeybv.supabase.co/functions/v1/prism-handover-pdf";
+
+      const response =
+        await fetch(
+          functionUrl,
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${currentSession.access_token}`
+            },
+
+            body:
+              JSON.stringify({
+                admission_id:
+                  admissionId
+              })
+          }
+        );
+
+      /*
+       * Handle HTTP/API errors.
+       */
+
+      if (!response.ok) {
+        let message =
+          `Unable to generate PDF (${response.status}).`;
+
+        try {
+          const contentType =
+            response.headers.get(
+              "content-type"
+            ) || "";
+
+          if (
+            contentType.includes(
+              "application/json"
+            )
+          ) {
+            const errorBody =
+              await response.json();
+
+            if (
+              errorBody?.error
+            ) {
+              message =
+                errorBody.error;
+            } else if (
+              errorBody?.message
+            ) {
+              message =
+                errorBody.message;
+            }
+          } else {
+            const errorText =
+              await response.text();
+
+            if (
+              errorText?.trim()
+            ) {
+              message =
+                errorText;
+            }
+          }
+        } catch (_) {
+          /*
+           * Keep the default HTTP error.
+           */
+        }
+
+        throw new Error(
+          message
+        );
+      }
+
+      /*
+       * Convert the response to a PDF Blob.
+       */
+
+      const blob =
+        await response.blob();
+
+      if (
+        !blob ||
+        blob.size === 0
+      ) {
+        throw new Error(
+          "The PDF response was empty."
+        );
+      }
+
+      /*
+       * Create a temporary browser URL.
+       */
+
+      pdfUrl =
+        URL.createObjectURL(
+          blob
+        );
+
+      /*
+       * Open the PDF in a new browser tab.
+       */
+
+      const openedWindow =
+        window.open(
+          pdfUrl,
+          "_blank",
+          "noopener,noreferrer"
+        );
+
+      /*
+       * Some browsers block window.open.
+       * Provide a fallback link.
+       */
+
+      if (!openedWindow) {
+        const link =
+          document.createElement(
+            "a"
+          );
+
+        link.href =
+          pdfUrl;
+
+        link.target =
+          "_blank";
+
+        link.rel =
+          "noopener noreferrer";
+
+        document.body.appendChild(
+          link
+        );
+
+        link.click();
+
+        link.remove();
+      }
+
+      /*
+       * Audit/activity event.
+       */
+
+      if (recordActivity) {
+        recordActivity(
+          "handover_pdf_opened",
+          {
+            entityType:
+              "admission",
+
+            entityId:
+              admissionId,
+
+            admissionId,
+
+            mode:
+              "detailed",
+
+            source:
+              "patient_workspace"
+          }
+        );
+      }
+
+      /*
+       * Keep the object URL alive long enough for the
+       * browser PDF viewer to finish opening it.
+       */
+
+      window.setTimeout(
+        () => {
+          if (pdfUrl) {
+            URL.revokeObjectURL(
+              pdfUrl
+            );
+          }
+        },
+        60000
+      );
+
+    } catch (pdfError) {
+      console.error(
+        "Detailed Handover PDF error:",
+        pdfError
+      );
+
+      /*
+       * Revoke the URL if an error happened after
+       * creating it.
+       */
+
+      if (pdfUrl) {
+        URL.revokeObjectURL(
+          pdfUrl
+        );
+      }
+
+      setError(
+        pdfError?.message ||
+        "Unable to generate the Detailed Handover PDF."
+      );
+    } finally {
+      setPdfLoading(false);
     }
   }
 
@@ -1203,6 +1485,10 @@ export default function Patient({
             "row wrap"
         },
 
+        /*
+         * Daily Follow-up
+         */
+
         h(
           "button",
           {
@@ -1218,6 +1504,34 @@ export default function Patient({
           },
           "＋ Daily Follow-up"
         ),
+
+        /*
+         * Detailed Handover PDF
+         */
+
+        h(
+          "button",
+          {
+            type: "button",
+            className:
+              "btn btn-secondary",
+
+            disabled:
+              !selectedAdmission ||
+              pdfLoading,
+
+            onClick:
+              openDetailedHandoverPdf
+          },
+
+          pdfLoading
+            ? "Generating PDF..."
+            : "Detailed Handover PDF"
+        ),
+
+        /*
+         * Specialist Review
+         */
 
         h(
           "button",
@@ -1239,6 +1553,10 @@ export default function Patient({
           },
           "Request Specialist Review"
         ),
+
+        /*
+         * Timeline
+         */
 
         h(
           "button",
@@ -2059,12 +2377,12 @@ export default function Patient({
                 {
                   className:
                     "row wrap",
-                    style: {
-                      justifyContent:
-                        "flex-end",
-                      marginTop:
-                        "16px"
-                    }
+                  style: {
+                    justifyContent:
+                      "flex-end",
+                    marginTop:
+                      "16px"
+                  }
                 },
 
                 h(
@@ -2102,4 +2420,4 @@ export default function Patient({
         )
       : null
   );
-    }
+          }
