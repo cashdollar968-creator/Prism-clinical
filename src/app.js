@@ -10,7 +10,7 @@ import {
 } from "https://esm.sh/react-dom@18.3.1/client";
 
 import { db } from "./supabase.js";
-import Login from "./pages/Login.js";
+import Login from "./pages/Login.jsx";
 
 const h = React.createElement;
 
@@ -38,7 +38,6 @@ function ErrorScreen({
         boxSizing: "border-box",
       },
     },
-
     h(
       "div",
       {
@@ -52,7 +51,6 @@ function ErrorScreen({
           boxShadow: "0 4px 20px rgba(0,0,0,0.06)",
         },
       },
-
       h(
         "div",
         {
@@ -65,7 +63,6 @@ function ErrorScreen({
         },
         "PRISM"
       ),
-
       h(
         "h2",
         {
@@ -76,7 +73,6 @@ function ErrorScreen({
         },
         title
       ),
-
       h(
         "div",
         {
@@ -88,7 +84,6 @@ function ErrorScreen({
         },
         message
       ),
-
       onRetry
         ? h(
             "button",
@@ -131,7 +126,6 @@ function LoadingScreen({
         fontFamily: "Arial, sans-serif",
       },
     },
-
     h(
       "div",
       {
@@ -140,7 +134,6 @@ function LoadingScreen({
           color: "#334155",
         },
       },
-
       h(
         "div",
         {
@@ -153,21 +146,13 @@ function LoadingScreen({
         },
         "PRISM"
       ),
-
-      h(
-        "div",
-        null,
-        message
-      )
+      h("div", null, message)
     )
   );
 }
 
 /* =========================================================
    SAFE DASHBOARD
-   IMPORTANT:
-   Dashboard is intentionally local for now.
-   This prevents Dashboard.js from affecting application boot.
 ========================================================= */
 
 function SafeDashboard({
@@ -218,7 +203,6 @@ function SafeDashboard({
         {
           className: "card",
         },
-
         h(
           "div",
           {
@@ -226,7 +210,6 @@ function SafeDashboard({
           },
           "Active Admissions"
         ),
-
         h(
           "div",
           {
@@ -241,7 +224,6 @@ function SafeDashboard({
         {
           className: "card",
         },
-
         h(
           "div",
           {
@@ -249,7 +231,6 @@ function SafeDashboard({
           },
           "Current Patients"
         ),
-
         h(
           "div",
           {
@@ -264,7 +245,6 @@ function SafeDashboard({
         {
           className: "card",
         },
-
         h(
           "div",
           {
@@ -272,7 +252,6 @@ function SafeDashboard({
           },
           "With Specialist"
         ),
-
         h(
           "div",
           {
@@ -287,7 +266,6 @@ function SafeDashboard({
         {
           className: "card",
         },
-
         h(
           "div",
           {
@@ -295,7 +273,6 @@ function SafeDashboard({
           },
           "System"
         ),
-
         h(
           "div",
           {
@@ -324,7 +301,6 @@ function SafeDashboard({
       ),
 
       activeAdmissions.length === 0
-
         ? h(
             "div",
             {
@@ -332,7 +308,6 @@ function SafeDashboard({
             },
             "No active admissions."
           )
-
         : h(
             "div",
             {
@@ -350,7 +325,6 @@ function SafeDashboard({
                 h(
                   "tr",
                   null,
-
                   h("th", null, "Patient"),
                   h("th", null, "Bed"),
                   h("th", null, "Diagnosis"),
@@ -938,7 +912,7 @@ function App() {
             Component =
               (
                 await import(
-                  "./pages/Patients.js"
+                  "./pages/Patients.jsx"
                 )
               ).default;
           }
@@ -950,7 +924,7 @@ function App() {
             Component =
               (
                 await import(
-                  "./pages/Patient.js"
+                  "./pages/Patient.jsx"
                 )
               ).default;
           }
@@ -962,7 +936,7 @@ function App() {
             Component =
               (
                 await import(
-                  "./pages/SpecialistQueue.js"
+                  "./pages/SpecialistQueue.jsx"
                 )
               ).default;
           }
@@ -974,7 +948,7 @@ function App() {
             Component =
               (
                 await import(
-                  "./pages/Administration.js"
+                  "./pages/Administration.jsx"
                 )
               ).default;
           }
@@ -1527,8 +1501,6 @@ function App() {
     React.Fragment,
     null,
 
-    /* HEADER */
-
     h(
       "header",
       {
@@ -1622,8 +1594,6 @@ function App() {
       )
     ),
 
-    /* ERROR NOTICE */
-
     dataError
       ? h(
           "div",
@@ -1639,16 +1609,12 @@ function App() {
         )
       : null,
 
-    /* BODY */
-
     h(
       "div",
       {
         className:
           "layout",
       },
-
-      /* SIDEBAR */
 
       h(
         "aside",
@@ -1760,8 +1726,6 @@ function App() {
             )
           : null
       ),
-
-      /* CONTENT */
 
       h(
         "main",
