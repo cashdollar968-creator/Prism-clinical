@@ -1,12 +1,9 @@
-# Simple workflow for deploying static content to GitHub Pages
-name: Deploy static content to Pages
+name: Deploy PRISM to GitHub Pages
 
 on:
-  # Deploy the active PRISM development branch
   push:
-    branches: ["feature/refactor-structure"]
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches:
+      - feature/refactor-structure
   workflow_dispatch:
 
 permissions:
@@ -19,22 +16,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build-and-deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build PRISM
+        run: npm run build
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload artifact
+      - name: Upload build artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: "./dist"
 
       - name: Deploy to GitHub Pages
         id: deployment
