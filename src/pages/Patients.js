@@ -1,5 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { db } from "../supabase";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from "https://esm.sh/react@18.3.1";
+
+import { db } from "../supabase.js";
 
 console.log("PRISM PATIENTS PAGE LOADED");
 
@@ -915,16 +920,14 @@ function NewPatientModal({ onClose, onCreated }) {
                   required
                 >
                   <Input
-                    value={
-                      form.patient_code
-                    }
+                    value={form.patient_code}
                     onChange={(event) =>
                       updateField(
                         "patient_code",
                         event.target.value
                       )
                     }
-                    placeholder="Patient code"
+                    placeholder="Hospital MRN / Patient Code"
                   />
                 </Field>
 
@@ -933,16 +936,14 @@ function NewPatientModal({ onClose, onCreated }) {
                   required
                 >
                   <Input
-                    value={
-                      form.full_name
-                    }
+                    value={form.full_name}
                     onChange={(event) =>
                       updateField(
                         "full_name",
                         event.target.value
                       )
                     }
-                    placeholder="Full name"
+                    placeholder="Patient full name"
                   />
                 </Field>
 
@@ -960,6 +961,7 @@ function NewPatientModal({ onClose, onCreated }) {
                         event.target.value
                       )
                     }
+                    placeholder="Age"
                   />
                 </Field>
 
@@ -977,15 +979,16 @@ function NewPatientModal({ onClose, onCreated }) {
                     }
                   >
                     <option value="">
-                      Select sex
+                      Select Sex
                     </option>
-
                     <option value="male">
                       Male
                     </option>
-
                     <option value="female">
                       Female
+                    </option>
+                    <option value="other">
+                      Other
                     </option>
                   </Select>
                 </Field>
@@ -1004,8 +1007,10 @@ function NewPatientModal({ onClose, onCreated }) {
                     }
                   />
                 </Field>
+              </div>
 
-                <label className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5">
+              <div className="mt-4">
+                <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <input
                     type="checkbox"
                     checked={form.demo}
@@ -1015,7 +1020,7 @@ function NewPatientModal({ onClose, onCreated }) {
                         event.target.checked
                       )
                     }
-                    className="h-4 w-4"
+                    className="mt-1 h-4 w-4"
                   />
 
                   <span>
@@ -1656,4 +1661,4 @@ export default function Patients() {
       )}
     </div>
   );
-      }
+    }
