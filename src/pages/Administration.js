@@ -1,499 +1,658 @@
-import React, {
-  useEffect,
-  useState
-} from "https://esm.sh/react@18.3.1";
-
+import React, { useEffect, useMemo, useState } from "https://esm.sh/react@18.3.1";
 import { db } from "../supabase.js";
+import { roleLabel } from "../helpers.js";
 
-const SUPABASE_URL =
-  "https://rcikgkdesnlfewkfeybv.supabase.co";
+const ROLE_OPTIONS = [
+  {
+    value: "medical_officer",
+    label: "Medical Officer"
+  },
+  {
+    value: "fellow",
+    label: "Fellow"
+  },
+  {
+    value: "consultant",
+    label: "Consultant / Specialist"
+  },
+  {
+    value: "admin",
+    label: "Administrator"
+  }
+];
 
-const FUNCTION_URL =
-  `${SUPABASE_URL}/functions/v1/admin-create-user`;
+const UNIT_TYPE_OPTIONS = [
+  {
+    value: "ward",
+    label: "Ward"
+  },
+  {
+    value: "ccu",
+    label: "CCU"
+  },
+  {
+    value: "icu",
+    label: "ICU"
+  },
+  {
+    value: "private_icu",
+    label: "Private ICU"
+  },
+  {
+    value: "clinic",
+    label: "Clinic"
+  },
+  {
+    value: "other",
+    label: "Other"
+  }
+];
 
-function roleLabel(role) {
-  const labels = {
-    admin: "Administrator",
-    medical_officer: "Medical Officer",
-    fellow: "Fellow",
-    consultant: "Consultant"
-  };
+const EMPTY_FORM = {
+  display_name: "",
+  login_id: "",
+  role: "medical_officer",
+  department_id: "",
+  active: true,
+  temporary_password: ""
+};
 
-  return labels[role] || role || "—";
+const EMPTY_UNIT_FORM = {
+  name: "",
+  code: "",
+  unit_type: "ward",
+  department_id: "",
+  active: true,
+  consultant_id: ""
+};
+
+function slugify(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80);
 }
 
-export default function Administration({
-  profile
-}) {
-  const [profiles, setProfiles] =
-    useState([]);
+function getUnitTypeLabel(type) {
+  const option = UNIT_TYPE_OPTIONS.find(
+    (item) => item.value === type
+  );
 
-  const [departments, setDepartments] =
-    useState([]);
+  return option?.label || type || "Other";
+}
 
-  const [units, setUnits] =
-    useState([]);
+export default function Administration({ profile }) {
+  const [profiles, setProfiles] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [wards, setWards] = useState([]);
+  const [beds, setBeds] = useState([]);
+  const [permissions, setPermissions] = useState([]);
 
-  const [departmentRoles, setDepartmentRoles] =
-    useState([]);
+  const [units, setUnits] = useState([]);
+  const [unitAssignments, setUnitAssignments] = useState([]);
 
-  const [wards, setWards] =
-    useState([]);
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
 
-  const [beds, setBeds] =
-    useState([]);
+  const [showUnitForm, setShowUnitForm] = useState(false);
+  const [editingUnitId, setEditingUnitId] = useState(null);
+  const [unitForm, setUnitForm] = useState(EMPTY_UNIT_FORM);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [saving, setSaving] = useState(false);
+  const [unitSaving, setUnitSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const [error, setError] =
-    useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const [showCreateUser, setShowCreateUser] =
-    useState(false);
-
-  const [creatingUser, setCreatingUser] =
-    useState(false);
-
-  const [createError, setCreateError] =
-    useState("");
-
-  const [createdUser, setCreatedUser] =
+  const [createdCredentials, setCreatedCredentials] =
     useState(null);
 
-  const [form, setForm] = useState({
-    display_name: "",
-    login_id: "",
-    role: "medical_officer",
-    department_id: "",
-    home_unit_id: "",
-    department_role_id: "",
-    active: true
-  });
+  const activeUsers = useMemo(
+    () => profiles.filter((user) => user.active),
+    [profiles]
+  );
 
+  const consultants = useMemo(
+    () =>
+      profiles.filter(
+        (user) =>
+          user.active &&
+          user.role === "consultant"
+      ),
+    [profiles]
+  );
 
-  /* ======================================================
-     LOAD ADMINISTRATION DATA
-  ====================================================== */
+  function getCurrentConsultant(unitId) {
+    const assignment = unitAssignments.find(
+      (item) =>
+        item.unit_id === unitId &&
+        item.active !== false &&
+        (
+          item.assignment_type === "consultant" ||
+          item.assignment_type === "specialist"
+        )
+    );
+
+    if (!assignment) return null;
+
+    return (
+      profiles.find(
+        (user) =>
+          user.id === assignment.user_id
+      ) || null
+    );
+  }
 
   async function loadAdministration() {
     setLoading(true);
     setError("");
 
-    try {
-      const [
-        profilesResult,
-        departmentsResult,
-        unitsResult,
-        rolesResult,
-        wardsResult,
-        bedsResult
-      ] = await Promise.all([
-        db
-          .from("profiles")
-          .select("*")
-          .order("created_at", {
-            ascending: false
-          }),
+    const [
+      profilesResult,
+      departmentsResult,
+      wardsResult,
+      bedsResult,
+      permissionsResult,
+      unitsResult,
+      assignmentsResult
+    ] = await Promise.all([
+      db
+        .from("profiles")
+        .select("*")
+        .order("created_at", {
+          ascending: false
+        }),
 
-        db
-          .from("departments")
-          .select("*")
-          .order("name", {
-            ascending: true
-          }),
+      db
+        .from("departments")
+        .select("*")
+        .order("name", {
+          ascending: true
+        }),
 
-        db
-          .from("units")
-          .select("*")
-          .order("name", {
-            ascending: true
-          }),
+      db
+        .from("wards")
+        .select("*")
+        .order("name", {
+          ascending: true
+        }),
 
-        db
-          .from("department_roles")
-          .select("*")
-          .order("name", {
-            ascending: true
-          }),
+      db
+        .from("beds")
+        .select("*")
+        .order("name", {
+          ascending: true
+        }),
 
-        db
-          .from("wards")
-          .select("*")
-          .order("name", {
-            ascending: true
-          }),
+      db
+        .from("permissions")
+        .select("*")
+        .eq("active", true)
+        .order("code", {
+          ascending: true
+        }),
 
-        db
-          .from("beds")
-          .select("*")
-          .order("name", {
-            ascending: true
-          })
-      ]);
+      db
+        .from("units")
+        .select("*")
+        .order("name", {
+          ascending: true
+        }),
 
-      const firstError =
-        profilesResult.error ||
-        departmentsResult.error ||
-        unitsResult.error ||
-        rolesResult.error ||
-        wardsResult.error ||
-        bedsResult.error;
+      db
+        .from("user_unit_assignments")
+        .select("*")
+    ]);
 
-      if (firstError) {
-        throw firstError;
-      }
+    const firstError =
+      profilesResult.error ||
+      departmentsResult.error ||
+      wardsResult.error ||
+      bedsResult.error ||
+      permissionsResult.error ||
+      unitsResult.error ||
+      assignmentsResult.error;
 
-      setProfiles(
-        profilesResult.data || []
-      );
-
-      setDepartments(
-        departmentsResult.data || []
-      );
-
-      setUnits(
-        unitsResult.data || []
-      );
-
-      setDepartmentRoles(
-        rolesResult.data || []
-      );
-
-      setWards(
-        wardsResult.data || []
-      );
-
-      setBeds(
-        bedsResult.data || []
-      );
-    } catch (err) {
-      console.error(
-        "Administration loading error:",
-        err
-      );
-
-      setError(
-        err?.message ||
-        "Unable to load administration data."
-      );
-    } finally {
+    if (firstError) {
+      setError(firstError.message);
       setLoading(false);
+      return;
     }
-  }
 
+    setProfiles(profilesResult.data || []);
+    setDepartments(departmentsResult.data || []);
+    setWards(wardsResult.data || []);
+    setBeds(bedsResult.data || []);
+    setPermissions(permissionsResult.data || []);
+    setUnits(unitsResult.data || []);
+    setUnitAssignments(
+      assignmentsResult.data || []
+    );
+
+    setLoading(false);
+  }
 
   useEffect(() => {
     loadAdministration();
   }, []);
 
-
-  /* ======================================================
-     FORM HELPERS
-  ====================================================== */
-
-  function updateField(
-    field,
-    value
-  ) {
+  function updateField(field, value) {
     setForm((previous) => ({
       ...previous,
       [field]: value
     }));
   }
 
-
-  function resetCreateForm() {
-    setForm({
-      display_name: "",
-      login_id: "",
-      role: "medical_officer",
-      department_id: "",
-      home_unit_id: "",
-      department_role_id: "",
-      active: true
-    });
-
-    setCreateError("");
-    setCreatedUser(null);
+  function updateUnitField(field, value) {
+    setUnitForm((previous) => ({
+      ...previous,
+      [field]: value
+    }));
   }
 
-
   function openCreateUser() {
-    resetCreateForm();
+    setError("");
+    setSuccess("");
+    setCreatedCredentials(null);
+
+    setForm({
+      ...EMPTY_FORM
+    });
+
     setShowCreateUser(true);
   }
 
-
   function closeCreateUser() {
-    if (creatingUser) {
-      return;
-    }
+    if (saving) return;
 
     setShowCreateUser(false);
-    resetCreateForm();
+
+    setForm({
+      ...EMPTY_FORM
+    });
   }
 
-
-  /* ======================================================
-     FILTERED OPTIONS
-  ====================================================== */
-
-  const filteredUnits =
-    form.department_id
-      ? units.filter(
-          (unit) =>
-            unit.department_id ===
-            form.department_id
-        )
-      : [];
-
-  const filteredRoles =
-    form.department_id
-      ? departmentRoles.filter(
-          (role) =>
-            role.department_id ===
-              form.department_id &&
-            role.active !== false
-        )
-      : [];
-
-
-  /* ======================================================
-     CREATE USER
-  ====================================================== */
-
-  async function createUser(
-    event
-  ) {
+  async function createUser(event) {
     event.preventDefault();
 
-    setCreateError("");
-    setCreatedUser(null);
+    setError("");
+    setSuccess("");
+    setCreatedCredentials(null);
 
-    if (
-      !form.display_name.trim()
-    ) {
-      setCreateError(
-        "Full name is required."
-      );
+    const displayName =
+      form.display_name.trim();
+
+    const loginId =
+      form.login_id.trim();
+
+    if (!displayName) {
+      setError("Full Name is required.");
       return;
     }
 
-    if (
-      !form.login_id.trim()
-    ) {
-      setCreateError(
-        "PRISM Login ID is required."
-      );
+    if (!loginId) {
+      setError("Login ID is required.");
       return;
     }
 
     if (
       !/^[A-Za-z0-9._-]{3,40}$/.test(
-        form.login_id.trim()
+        loginId
       )
     ) {
-      setCreateError(
-        "Login ID must contain only letters, numbers, dot, underscore or hyphen."
+      setError(
+        "Login ID must contain only letters, numbers, dots, underscores or hyphens and be 3–40 characters."
       );
+      return;
+    }
+
+    if (!form.role) {
+      setError("Role is required.");
       return;
     }
 
     if (
-      !form.role
+      form.temporary_password.trim() &&
+      form.temporary_password.trim()
+        .length < 8
     ) {
-      setCreateError(
-        "System role is required."
+      setError(
+        "Temporary password must be at least 8 characters."
       );
       return;
     }
 
-    setCreatingUser(true);
+    setSaving(true);
 
     try {
+      const { data: sessionData } =
+        await db.auth.getSession();
+
+      const accessToken =
+        sessionData?.session?.access_token;
+
+      if (!accessToken) {
+        setError(
+          "Your session has expired. Please sign in again."
+        );
+
+        setSaving(false);
+        return;
+      }
+
       const {
-        data: {
-          session
-        }
-      } = await db.auth.getSession();
+        data,
+        error: functionError
+      } = await db.functions.invoke(
+        "admin-create-user",
+        {
+          body: {
+            display_name:
+              displayName,
 
-      if (!session?.access_token) {
-        throw new Error(
-          "Your session has expired. Please log in again."
-        );
-      }
+            login_id:
+              loginId,
 
-      const response =
-        await fetch(
-          FUNCTION_URL,
-          {
-            method: "POST",
+            role:
+              form.role,
 
-            headers: {
-              "Content-Type":
-                "application/json",
+            department_id:
+              form.department_id ||
+              null,
 
-              Authorization:
-                `Bearer ${session.access_token}`
-            },
+            active:
+              form.active,
 
-            body: JSON.stringify({
-              display_name:
-                form.display_name.trim(),
-
-              login_id:
-                form.login_id.trim(),
-
-              role:
-                form.role,
-
-              department_id:
-                form.department_id ||
-                null,
-
-              home_unit_id:
-                form.home_unit_id ||
-                null,
-
-              active:
-                form.active
-            })
+            temporary_password:
+              form.temporary_password.trim() ||
+              undefined
           }
-        );
-
-      let payload = null;
-
-      try {
-        payload =
-          await response.json();
-      } catch {
-        payload = null;
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          payload?.error ||
-          `User creation failed (${response.status}).`
-        );
-      }
-
-      if (
-        !payload?.user_id
-      ) {
-        throw new Error(
-          "The server did not return the created user."
-        );
-      }
-
-
-      /* ==================================================
-         OPTIONAL HOME UNIT
-      ================================================== */
-
-      if (
-        form.home_unit_id
-      ) {
-        const {
-          error:
-            homeUnitError
-        } = await db.rpc(
-          "admin_set_home_unit",
-          {
-            p_user_id:
-              payload.user_id,
-
-            p_unit_id:
-              form.home_unit_id
-          }
-        );
-
-        if (homeUnitError) {
-          throw new Error(
-            `User created, but Home Unit assignment failed: ${homeUnitError.message}`
-          );
         }
+      );
+
+      if (functionError) {
+        setError(functionError.message);
+        setSaving(false);
+        return;
       }
 
-
-      /* ==================================================
-         OPTIONAL DEPARTMENT ROLE
-      ================================================== */
-
-      if (
-        form.department_role_id
-      ) {
-        const {
-          error:
-            departmentRoleError
-        } = await db.rpc(
-          "admin_assign_department_role",
-          {
-            p_user_id:
-              payload.user_id,
-
-            p_department_role_id:
-              form.department_role_id,
-
-            p_unit_id:
-              form.home_unit_id ||
-              null
-          }
-        );
-
-        if (departmentRoleError) {
-          throw new Error(
-            `User created, but Department Role assignment failed: ${departmentRoleError.message}`
-          );
-        }
+      if (data?.error) {
+        setError(data.error);
+        setSaving(false);
+        return;
       }
 
-
-      setCreatedUser({
-        user_id:
-          payload.user_id,
-
-        display_name:
-          form.display_name.trim(),
+      setCreatedCredentials({
+        name:
+          data.profile.display_name,
 
         login_id:
-          form.login_id.trim(),
+          data.profile.login_id,
 
-        role:
-          form.role,
-
-        temporary_password:
-          payload.temporary_password ||
-          null
+        password:
+          data.temporary_password
       });
 
+      setSuccess(
+        "User account created successfully."
+      );
+
+      setForm({
+        ...EMPTY_FORM
+      });
+
+      setShowCreateUser(false);
 
       await loadAdministration();
+    } catch (errorObject) {
+      setError(
+        errorObject?.message ||
+          "Unable to create user."
+      );
+    }
 
-    } catch (err) {
-      console.error(
-        "Create user error:",
-        err
+    setSaving(false);
+  }
+
+  async function copyCredentials() {
+    if (!createdCredentials) return;
+
+    const credentials =
+      "PRISM Login ID: " +
+      createdCredentials.login_id +
+      "\nTemporary Password: " +
+      createdCredentials.password;
+
+    try {
+      await navigator.clipboard.writeText(
+        credentials
       );
 
-      setCreateError(
-        err?.message ||
-        "Unable to create user."
+      setSuccess(
+        "Credentials copied to clipboard."
       );
-    } finally {
-      setCreatingUser(false);
+    } catch (_) {
+      setError(
+        "Unable to copy automatically. Please copy the credentials manually."
+      );
     }
   }
 
+  function openAddUnit() {
+    setError("");
+    setSuccess("");
 
-  /* ======================================================
-     ACCESS CONTROL
-  ====================================================== */
+    setEditingUnitId(null);
 
-  if (
-    profile?.role !==
-    "admin"
-  ) {
+    setUnitForm({
+      ...EMPTY_UNIT_FORM
+    });
+
+    setShowUnitForm(true);
+  }
+
+  function openEditUnit(unit) {
+    const currentConsultant =
+      getCurrentConsultant(unit.id);
+
+    setError("");
+    setSuccess("");
+
+    setEditingUnitId(unit.id);
+
+    setUnitForm({
+      name: unit.name || "",
+      code: unit.code || "",
+      unit_type:
+        unit.unit_type || "ward",
+      department_id:
+        unit.department_id || "",
+      active:
+        unit.active !== false,
+      consultant_id:
+        currentConsultant?.id || ""
+    });
+
+    setShowUnitForm(true);
+  }
+
+  function closeUnitForm() {
+    if (unitSaving) return;
+
+    setShowUnitForm(false);
+    setEditingUnitId(null);
+
+    setUnitForm({
+      ...EMPTY_UNIT_FORM
+    });
+  }
+
+  async function saveUnit(event) {
+    event.preventDefault();
+
+    setError("");
+    setSuccess("");
+
+    const name =
+      unitForm.name.trim();
+
+    let code =
+      unitForm.code.trim();
+
+    if (!name) {
+      setError("Unit name is required.");
+      return;
+    }
+
+    if (!code) {
+      code = slugify(name);
+    }
+
+    if (!code) {
+      setError(
+        "A valid unit code is required."
+      );
+      return;
+    }
+
+    setUnitSaving(true);
+
+    try {
+      let unitId = editingUnitId;
+
+      const unitPayload = {
+        name,
+        code,
+        unit_type:
+          unitForm.unit_type ||
+          "ward",
+        department_id:
+          unitForm.department_id ||
+          null,
+        active:
+          unitForm.active
+      };
+
+      if (editingUnitId) {
+        const { error: updateError } =
+          await db
+            .from("units")
+            .update(unitPayload)
+            .eq("id", editingUnitId);
+
+        if (updateError) {
+          setError(updateError.message);
+          setUnitSaving(false);
+          return;
+        }
+      } else {
+        const {
+          data: insertedUnit,
+          error: insertError
+        } = await db
+          .from("units")
+          .insert(unitPayload)
+          .select("*")
+          .single();
+
+        if (insertError) {
+          setError(insertError.message);
+          setUnitSaving(false);
+          return;
+        }
+
+        unitId = insertedUnit.id;
+      }
+
+      /*
+       * Consultant assignment is intentionally stored
+       * separately from the unit.
+       *
+       * This preserves assignment history instead of
+       * overwriting the consultant directly on the unit.
+       */
+
+      const {
+        error: deactivateError
+      } = await db
+        .from("user_unit_assignments")
+        .update({
+          active: false
+        })
+        .eq("unit_id", unitId)
+        .eq("active", true)
+        .in(
+          "assignment_type",
+          [
+            "consultant",
+            "specialist"
+          ]
+        );
+
+      if (deactivateError) {
+        setError(
+          "Unit saved, but the previous consultant assignment could not be closed: " +
+            deactivateError.message
+        );
+
+        await loadAdministration();
+        setUnitSaving(false);
+        return;
+      }
+
+      if (unitForm.consultant_id) {
+        const {
+          error: assignmentError
+        } = await db
+          .from("user_unit_assignments")
+          .insert({
+            user_id:
+              unitForm.consultant_id,
+
+            unit_id:
+              unitId,
+
+            assignment_type:
+              "consultant",
+
+            active: true
+          });
+
+        if (assignmentError) {
+          setError(
+            "Unit saved, but the consultant assignment could not be saved: " +
+              assignmentError.message
+          );
+
+          await loadAdministration();
+          setUnitSaving(false);
+          return;
+        }
+      }
+
+      setSuccess(
+        editingUnitId
+          ? "Unit updated successfully."
+          : "Unit created successfully."
+      );
+
+      closeUnitForm();
+
+      await loadAdministration();
+    } catch (errorObject) {
+      setError(
+        errorObject?.message ||
+          "Unable to save unit."
+      );
+    }
+
+    setUnitSaving(false);
+  }
+
+  if (profile?.role !== "admin") {
     return React.createElement(
       "div",
       {
@@ -510,19 +669,909 @@ export default function Administration({
     );
   }
 
+  const createUserForm =
+    showCreateUser
+      ? React.createElement(
+          "div",
+          {
+            className: "card"
+          },
 
-  /* ======================================================
-     RENDER
-  ====================================================== */
+          React.createElement(
+            "div",
+            {
+              className: "row wrap"
+            },
+
+            React.createElement(
+              "div",
+              null,
+
+              React.createElement(
+                "div",
+                {
+                  className:
+                    "section-title"
+                },
+                "Create User"
+              ),
+
+              React.createElement(
+                "div",
+                {
+                  className:
+                    "page-subtitle"
+                },
+                "Create the account centrally. The user will be required to change the temporary password at first login."
+              )
+            ),
+
+            React.createElement(
+              "button",
+              {
+                className:
+                  "btn btn-secondary",
+                type: "button",
+                onClick:
+                  closeCreateUser
+              },
+              "Cancel"
+            )
+          ),
+
+          React.createElement(
+            "form",
+            {
+              onSubmit:
+                createUser
+            },
+
+            React.createElement(
+              "div",
+              {
+                className:
+                  "grid grid-2"
+              },
+
+              React.createElement(
+                "label",
+                {
+                  className:
+                    "field"
+                },
+
+                React.createElement(
+                  "span",
+                  null,
+                  "Full Name"
+                ),
+
+                React.createElement(
+                  "input",
+                  {
+                    value:
+                      form.display_name,
+
+                    onChange:
+                      (event) =>
+                        updateField(
+                          "display_name",
+                          event.target.value
+                        ),
+
+                    placeholder:
+                      "e.g. Dr Ahmed Ali",
+
+                    required: true
+                  }
+                )
+              ),
+
+              React.createElement(
+                "label",
+                {
+                  className:
+                    "field"
+                },
+
+                React.createElement(
+                  "span",
+                  null,
+                  "PRISM Login ID"
+                ),
+
+                React.createElement(
+                  "input",
+                  {
+                    value:
+                      form.login_id,
+
+                    onChange:
+                      (event) =>
+                        updateField(
+                          "login_id",
+                          event.target.value
+                        ),
+
+                    placeholder:
+                      "e.g. AHMED01",
+
+                    autoCapitalize:
+                      "none",
+
+                    autoCorrect:
+                      "off",
+
+                    spellCheck:
+                      false,
+
+                    required: true
+                  }
+                ),
+
+                React.createElement(
+                  "small",
+                  {
+                    className:
+                      "muted"
+                  },
+                  "This is the username used for PRISM login."
+                )
+              ),
+
+              React.createElement(
+                "label",
+                {
+                  className:
+                    "field"
+                },
+
+                React.createElement(
+                  "span",
+                  null,
+                  "Role"
+                ),
+
+                React.createElement(
+                  "select",
+                  {
+                    value:
+                      form.role,
+
+                    onChange:
+                      (event) =>
+                        updateField(
+                          "role",
+                          event.target.value
+                        )
+                  },
+
+                  ROLE_OPTIONS.map(
+                    (option) =>
+                      React.createElement(
+                        "option",
+                        {
+                          key:
+                            option.value,
+
+                          value:
+                            option.value
+                        },
+                        option.label
+                      )
+                  )
+                )
+              ),
+
+              React.createElement(
+                "label",
+                {
+                  className:
+                    "field"
+                },
+
+                React.createElement(
+                  "span",
+                  null,
+                  "Department"
+                ),
+
+                React.createElement(
+                  "select",
+                  {
+                    value:
+                      form.department_id,
+
+                    onChange:
+                      (event) =>
+                        updateField(
+                          "department_id",
+                          event.target.value
+                        )
+                  },
+
+                  React.createElement(
+                    "option",
+                    {
+                      value: ""
+                    },
+                    "No department"
+                  ),
+
+                  departments
+                    .filter(
+                      (department) =>
+                        department.active !==
+                        false
+                    )
+                    .map(
+                      (department) =>
+                        React.createElement(
+                          "option",
+                          {
+                            key:
+                              department.id,
+
+                            value:
+                              department.id
+                          },
+                          department.name
+                        )
+                    )
+                )
+              ),
+
+              React.createElement(
+                "label",
+                {
+                  className:
+                    "field"
+                },
+
+                React.createElement(
+                  "span",
+                  null,
+                  "Temporary Password"
+                ),
+
+                React.createElement(
+                  "input",
+                  {
+                    type: "text",
+
+                    value:
+                      form.temporary_password,
+
+                    onChange:
+                      (event) =>
+                        updateField(
+                          "temporary_password",
+                          event.target.value
+                        ),
+
+                    placeholder:
+                      "Leave blank to generate automatically",
+
+                    autoComplete:
+                      "off"
+                  }
+                ),
+
+                React.createElement(
+                  "small",
+                  {
+                    className:
+                      "muted"
+                  },
+                  "If blank, PRISM generates a temporary password."
+                )
+              )
+            ),
+
+            React.createElement(
+              "div",
+              {
+                className:
+                  "detail-box",
+                style: {
+                  marginTop:
+                    "12px"
+                }
+              },
+
+              React.createElement(
+                "label",
+                {
+                  className:
+                    "row",
+                  style: {
+                    gap: "8px"
+                  }
+                },
+
+                React.createElement(
+                  "input",
+                  {
+                    type:
+                      "checkbox",
+
+                    checked:
+                      form.active,
+
+                    onChange:
+                      (event) =>
+                        updateField(
+                          "active",
+                          event.target.checked
+                        )
+                  }
+                ),
+
+                React.createElement(
+                  "span",
+                  null,
+                  "Account active"
+                )
+              )
+            ),
+
+            React.createElement(
+              "div",
+              {
+                className:
+                  "row",
+                style: {
+                  marginTop:
+                    "16px"
+                }
+              },
+
+              React.createElement(
+                "button",
+                {
+                  className:
+                    "btn btn-primary",
+
+                  type:
+                    "submit",
+
+                  disabled:
+                    saving
+                },
+                saving
+                  ? "Creating..."
+                  : "Create User"
+              )
+            )
+          )
+        )
+      : null;
+
+  const credentialCard =
+    createdCredentials
+      ? React.createElement(
+          "div",
+          {
+            className: "card"
+          },
+
+          React.createElement(
+            "div",
+            {
+              className:
+                "section-title"
+            },
+            "User Created"
+          ),
+
+          React.createElement(
+            "div",
+            {
+              className:
+                "page-subtitle"
+            },
+            "Give these credentials to the user. The temporary password is not stored in the profile."
+          ),
+
+          React.createElement(
+            "div",
+            {
+              className:
+                "detail-box",
+              style: {
+                marginTop:
+                  "12px"
+              }
+            },
+
+            React.createElement(
+              "div",
+              null,
+              React.createElement(
+                "strong",
+                null,
+                createdCredentials.name
+              )
+            ),
+
+            React.createElement(
+              "div",
+              {
+                style: {
+                  marginTop:
+                    "8px"
+                }
+              },
+              "Login ID: ",
+              React.createElement(
+                "strong",
+                null,
+                createdCredentials.login_id
+              )
+            ),
+
+            React.createElement(
+              "div",
+              {
+                style: {
+                  marginTop:
+                    "8px"
+                }
+              },
+              "Temporary Password: ",
+              React.createElement(
+                "strong",
+                null,
+                createdCredentials.password
+              )
+            )
+          ),
+
+          React.createElement(
+            "div",
+            {
+              className:
+                "row",
+              style: {
+                marginTop:
+                  "12px"
+              }
+            },
+
+            React.createElement(
+              "button",
+              {
+                className:
+                  "btn btn-secondary",
+
+                type:
+                  "button",
+
+                onClick:
+                  copyCredentials
+              },
+              "Copy Credentials"
+            ),
+
+            React.createElement(
+              "button",
+              {
+                className:
+                  "btn btn-secondary",
+
+                type:
+                  "button",
+
+                onClick:
+                  () =>
+                    setCreatedCredentials(
+                      null
+                    )
+              },
+              "Dismiss"
+            )
+          )
+        )
+      : null;
+
+  const unitFormCard =
+    showUnitForm
+      ? React.createElement(
+          "div",
+          {
+            className: "card"
+          },
+
+          React.createElement(
+            "div",
+            {
+              className:
+                "row wrap"
+            },
+
+            React.createElement(
+              "div",
+              null,
+
+              React.createElement(
+                "div",
+                {
+                  className:
+                    "section-title"
+                },
+                editingUnitId
+                  ? "Edit Unit"
+                  : "Add Unit"
+              ),
+
+              React.createElement(
+                "div",
+                {
+                  className:
+                    "page-subtitle"
+                },
+                "Configure the clinical unit and its current consultant."
+              )
+            ),
+
+            React.createElement(
+              "button",
+              {
+                className:
+                  "btn btn-secondary",
+
+                type:
+                  "button",
+
+                onClick:
+                  closeUnitForm
+              },
+              "Cancel"
+            )
+          ),
+
+          React.createElement(
+            "form",
+            {
+              onSubmit:
+                saveUnit
+            },
+
+            React.createElement(
+              "div",
+              {
+                className:
+                  "grid grid-2"
+              },
+
+              React.createElement(
+                "label",
+                {
+                  className:
+                    "field"
+                },
+
+                React.createElement(
+                  "span",
+                  null,
+                  "Unit Name"
+                ),
+
+                React.createElement(
+                  "input",
+                  {
+                    value:
+                      unitForm.name,
+
+                    onChange:
+                      (event) =>
+                        updateUnitField(
+                          "name",
+                          event.target.value
+                        ),
+
+                    placeholder:
+                      "e.g. Cardiology Ward",
+
+                    required:
+                      true
+                  }
+                )
+              ),
+
+              React.createElement(
+                "label",
+                {
+                  className:
+                    "field"
+                },
+
+                React.createElement(
+                  "span",
+                  null,
+                  "Unit Code"
+                ),
+
+                React.createElement(
+                  "input",
+                  {
+                    value:
+                      unitForm.code,
+
+                    onChange:
+                      (event) =>
+                        updateUnitField(
+                          "code",
+                          event.target.value
+                        ),
+
+                    placeholder:
+                      "e.g. cardiology_ward"
+                  }
+                ),
+
+                React.createElement(
+                  "small",
+                  {
+                    className:
+                      "muted"
+                  },
+                  "Leave blank to generate the code automatically."
+                )
+              ),
+
+              React.createElement(
+                "label",
+                {
+                  className:
+                    "field"
+                },
+
+                React.createElement(
+                  "span",
+                  null,
+                  "Unit Type"
+                ),
+
+                React.createElement(
+                  "select",
+                  {
+                    value:
+                      unitForm.unit_type,
+
+                    onChange:
+                      (event) =>
+                        updateUnitField(
+                          "unit_type",
+                          event.target.value
+                        )
+                  },
+
+                  UNIT_TYPE_OPTIONS.map(
+                    (option) =>
+                      React.createElement(
+                        "option",
+                        {
+                          key:
+                            option.value,
+
+                          value:
+                            option.value
+                        },
+                        option.label
+                      )
+                  )
+                )
+              ),
+
+              React.createElement(
+                "label",
+                {
+                  className:
+                    "field"
+                },
+
+                React.createElement(
+                  "span",
+                  null,
+                  "Department"
+                ),
+
+                React.createElement(
+                  "select",
+                  {
+                    value:
+                      unitForm.department_id,
+
+                    onChange:
+                      (event) =>
+                        updateUnitField(
+                          "department_id",
+                          event.target.value
+                        )
+                  },
+
+                  React.createElement(
+                    "option",
+                    {
+                      value: ""
+                    },
+                    "No department"
+                  ),
+
+                  departments
+                    .filter(
+                      (department) =>
+                        department.active !==
+                        false
+                    )
+                    .map(
+                      (department) =>
+                        React.createElement(
+                          "option",
+                          {
+                            key:
+                              department.id,
+
+                            value:
+                              department.id
+                          },
+                          department.name
+                        )
+                    )
+                )
+              ),
+
+              React.createElement(
+                "label",
+                {
+                  className:
+                    "field"
+                },
+
+                React.createElement(
+                  "span",
+                  null,
+                  "Current Consultant"
+                ),
+
+                React.createElement(
+                  "select",
+                  {
+                    value:
+                      unitForm.consultant_id,
+
+                    onChange:
+                      (event) =>
+                        updateUnitField(
+                          "consultant_id",
+                          event.target.value
+                        )
+                  },
+
+                  React.createElement(
+                    "option",
+                    {
+                      value: ""
+                    },
+                    "No consultant assigned"
+                  ),
+
+                  consultants.map(
+                    (consultant) =>
+                      React.createElement(
+                        "option",
+                        {
+                          key:
+                            consultant.id,
+
+                          value:
+                            consultant.id
+                        },
+                        consultant.display_name ||
+                          consultant.login_id
+                      )
+                  )
+                ),
+
+                consultants.length ===
+                0
+                  ? React.createElement(
+                      "small",
+                      {
+                        className:
+                          "muted"
+                      },
+                      "Create an active user with the Consultant role first."
+                    )
+                  : null
+              )
+            ),
+
+            React.createElement(
+              "div",
+              {
+                className:
+                  "detail-box",
+                style: {
+                  marginTop:
+                    "12px"
+                }
+              },
+
+              React.createElement(
+                "label",
+                {
+                  className:
+                    "row",
+                  style: {
+                    gap: "8px"
+                  }
+                },
+
+                React.createElement(
+                  "input",
+                  {
+                    type:
+                      "checkbox",
+
+                    checked:
+                      unitForm.active,
+
+                    onChange:
+                      (event) =>
+                        updateUnitField(
+                          "active",
+                          event.target.checked
+                        )
+                  }
+                ),
+
+                React.createElement(
+                  "span",
+                  null,
+                  "Unit active"
+                )
+              )
+            ),
+
+            React.createElement(
+              "div",
+              {
+                className:
+                  "row",
+                style: {
+                  marginTop:
+                    "16px"
+                }
+              },
+
+              React.createElement(
+                "button",
+                {
+                  className:
+                    "btn btn-primary",
+
+                  type:
+                    "submit",
+
+                  disabled:
+                    unitSaving
+                },
+                unitSaving
+                  ? "Saving..."
+                  : editingUnitId
+                    ? "Save Changes"
+                    : "Add Unit"
+              )
+            )
+          )
+        )
+      : null;
 
   return React.createElement(
     React.Fragment,
     null,
-
-
-    /* ====================================================
-       HEADER
-    ==================================================== */
 
     React.createElement(
       "div",
@@ -550,7 +1599,7 @@ export default function Administration({
             className:
               "page-subtitle"
           },
-          "Users, departments, units, wards and beds"
+          "Users, roles, permissions, departments, units, wards and beds"
         )
       ),
 
@@ -558,10 +1607,7 @@ export default function Administration({
         "div",
         {
           className:
-            "row wrap",
-          style: {
-            gap: "8px"
-          }
+            "row"
         },
 
         React.createElement(
@@ -569,10 +1615,14 @@ export default function Administration({
           {
             className:
               "btn btn-primary",
+
+            type:
+              "button",
+
             onClick:
               openCreateUser
           },
-          "+ Add Person"
+          "+ Add User"
         ),
 
         React.createElement(
@@ -580,8 +1630,28 @@ export default function Administration({
           {
             className:
               "btn btn-secondary",
+
+            type:
+              "button",
+
+            onClick:
+              openAddUnit
+          },
+          "+ Add Unit"
+        ),
+
+        React.createElement(
+          "button",
+          {
+            className:
+              "btn btn-secondary",
+
+            type:
+              "button",
+
             onClick:
               loadAdministration,
+
             disabled:
               loading
           },
@@ -592,616 +1662,33 @@ export default function Administration({
       )
     ),
 
-
-    /* ====================================================
-       GLOBAL ERROR
-    ==================================================== */
-
     error
       ? React.createElement(
           "div",
           {
             className:
-              "alert alert-error",
-            style: {
-              marginTop:
-                "16px"
-            }
+              "error"
           },
           error
         )
       : null,
 
-
-    /* ====================================================
-       CREATE USER MODAL
-    ==================================================== */
-
-    showCreateUser
+    success
       ? React.createElement(
           "div",
           {
             className:
-              "modal-backdrop"
+              "success"
           },
-
-          React.createElement(
-            "div",
-            {
-              className:
-                "modal"
-            },
-
-            React.createElement(
-              "div",
-              {
-                className:
-                  "modal-header"
-              },
-
-              React.createElement(
-                "div",
-                null,
-
-                React.createElement(
-                  "div",
-                  {
-                    className:
-                      "modal-title"
-                  },
-                  "Add Person"
-                ),
-
-                React.createElement(
-                  "div",
-                  {
-                    className:
-                      "page-subtitle"
-                  },
-                  "Create a PRISM clinical user"
-                )
-              ),
-
-              React.createElement(
-                "button",
-                {
-                  className:
-                    "btn btn-secondary",
-                  onClick:
-                    closeCreateUser,
-                  disabled:
-                    creatingUser
-                },
-                "Close"
-              )
-            ),
-
-
-            createdUser
-              ? React.createElement(
-                  "div",
-                  {
-                    className:
-                      "alert alert-success",
-                    style: {
-                      marginBottom:
-                        "16px"
-                    }
-                  },
-
-                  React.createElement(
-                    "strong",
-                    null,
-                    "User created successfully."
-                  ),
-
-                  React.createElement(
-                    "div",
-                    {
-                      style: {
-                        marginTop:
-                          "8px"
-                      }
-                    },
-                    `Name: ${createdUser.display_name}`
-                  ),
-
-                  React.createElement(
-                    "div",
-                    null,
-                    `Login ID: ${createdUser.login_id}`
-                  ),
-
-                  React.createElement(
-                    "div",
-                    null,
-                    `Role: ${roleLabel(createdUser.role)}`
-                  ),
-
-                  createdUser.temporary_password
-                    ? React.createElement(
-                        "div",
-                        {
-                          style: {
-                            marginTop:
-                              "10px"
-                          }
-                        },
-
-                        React.createElement(
-                          "strong",
-                          null,
-                          "Temporary Password: "
-                        ),
-
-                        React.createElement(
-                          "code",
-                          null,
-                          createdUser.temporary_password
-                        )
-                      )
-                    : null,
-
-                  React.createElement(
-                    "div",
-                    {
-                      className:
-                        "muted small",
-                      style: {
-                        marginTop:
-                          "10px"
-                      }
-                    },
-                    "Store the temporary password securely. It is returned only at creation time."
-                  )
-                )
-              : React.createElement(
-                  "form",
-                  {
-                    onSubmit:
-                      createUser
-                  },
-
-                  createError
-                    ? React.createElement(
-                        "div",
-                        {
-                          className:
-                            "alert alert-error",
-                          style: {
-                            marginBottom:
-                              "16px"
-                          }
-                        },
-                        createError
-                      )
-                    : null,
-
-
-                  React.createElement(
-                    "div",
-                    {
-                      className:
-                        "form-grid"
-                    },
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "field"
-                      },
-
-                      React.createElement(
-                        "label",
-                        null,
-                        "Full Name *"
-                      ),
-
-                      React.createElement(
-                        "input",
-                        {
-                          value:
-                            form.display_name,
-
-                          onChange:
-                            (e) =>
-                              updateField(
-                                "display_name",
-                                e.target.value
-                              ),
-
-                          required:
-                            true,
-
-                          placeholder:
-                            "Full name"
-                        }
-                      )
-                    ),
-
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "field"
-                      },
-
-                      React.createElement(
-                        "label",
-                        null,
-                        "PRISM Login ID *"
-                      ),
-
-                      React.createElement(
-                        "input",
-                        {
-                          value:
-                            form.login_id,
-
-                          onChange:
-                            (e) =>
-                              updateField(
-                                "login_id",
-                                e.target.value
-                              ),
-
-                          required:
-                            true,
-
-                          placeholder:
-                            "e.g. TEST012"
-                        }
-                      )
-                    ),
-
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "field"
-                      },
-
-                      React.createElement(
-                        "label",
-                        null,
-                        "System Role *"
-                      ),
-
-                      React.createElement(
-                        "select",
-                        {
-                          value:
-                            form.role,
-
-                          onChange:
-                            (e) =>
-                              updateField(
-                                "role",
-                                e.target.value
-                              )
-                        },
-
-                        React.createElement(
-                          "option",
-                          {
-                            value:
-                              "medical_officer"
-                          },
-                          "Medical Officer"
-                        ),
-
-                        React.createElement(
-                          "option",
-                          {
-                            value:
-                              "fellow"
-                          },
-                          "Fellow"
-                        ),
-
-                        React.createElement(
-                          "option",
-                          {
-                            value:
-                              "consultant"
-                          },
-                          "Consultant"
-                        ),
-
-                        React.createElement(
-                          "option",
-                          {
-                            value:
-                              "admin"
-                          },
-                          "Administrator"
-                        )
-                      )
-                    ),
-
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "field"
-                      },
-
-                      React.createElement(
-                        "label",
-                        null,
-                        "Department"
-                      ),
-
-                      React.createElement(
-                        "select",
-                        {
-                          value:
-                            form.department_id,
-
-                          onChange:
-                            (e) => {
-                              setForm(
-                                (previous) => ({
-                                  ...previous,
-
-                                  department_id:
-                                    e.target.value,
-
-                                  home_unit_id:
-                                    "",
-
-                                  department_role_id:
-                                    ""
-                                })
-                              );
-                            }
-                        },
-
-                        React.createElement(
-                          "option",
-                          {
-                            value:
-                              ""
-                          },
-                          "No department"
-                        ),
-
-                        departments.map(
-                          (
-                            department
-                          ) =>
-                            React.createElement(
-                              "option",
-                              {
-                                key:
-                                  department.id,
-                                value:
-                                  department.id
-                              },
-                              department.name
-                            )
-                        )
-                      )
-                    ),
-
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "field"
-                      },
-
-                      React.createElement(
-                        "label",
-                        null,
-                        "Home Unit"
-                      ),
-
-                      React.createElement(
-                        "select",
-                        {
-                          value:
-                            form.home_unit_id,
-
-                          onChange:
-                            (e) =>
-                              updateField(
-                                "home_unit_id",
-                                e.target.value
-                              ),
-
-                          disabled:
-                            !form.department_id
-                        },
-
-                        React.createElement(
-                          "option",
-                          {
-                            value:
-                              ""
-                          },
-                          form.department_id
-                            ? "No home unit"
-                            : "Select department first"
-                        ),
-
-                        filteredUnits.map(
-                          (
-                            unit
-                          ) =>
-                            React.createElement(
-                              "option",
-                              {
-                                key:
-                                  unit.id,
-                                value:
-                                  unit.id
-                              },
-                              unit.name
-                            )
-                        )
-                      )
-                    ),
-
-
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "field"
-                      },
-
-                      React.createElement(
-                        "label",
-                        null,
-                        "Department Role"
-                      ),
-
-                      React.createElement(
-                        "select",
-                        {
-                          value:
-                            form.department_role_id,
-
-                          onChange:
-                            (e) =>
-                              updateField(
-                                "department_role_id",
-                                e.target.value
-                              ),
-
-                          disabled:
-                            !form.department_id
-                        },
-
-                        React.createElement(
-                          "option",
-                          {
-                            value:
-                              ""
-                          },
-                          form.department_id
-                            ? "No department role"
-                            : "Select department first"
-                        ),
-
-                        filteredRoles.map(
-                          (
-                            role
-                          ) =>
-                            React.createElement(
-                              "option",
-                              {
-                                key:
-                                  role.id,
-                                value:
-                                  role.id
-                              },
-                              role.name
-                            )
-                        )
-                      )
-                    )
-                  ),
-
-
-                  React.createElement(
-                    "label",
-                    {
-                      className:
-                        "checkbox-row"
-                    },
-
-                    React.createElement(
-                      "input",
-                      {
-                        type:
-                          "checkbox",
-
-                        checked:
-                          form.active,
-
-                        onChange:
-                          (e) =>
-                            updateField(
-                              "active",
-                              e.target.checked
-                            )
-                      }
-                    ),
-
-                    React.createElement(
-                      "span",
-                      null,
-                      "Active user"
-                    )
-                  ),
-
-
-                  React.createElement(
-                    "div",
-                    {
-                      className:
-                        "row wrap",
-                      style: {
-                        justifyContent:
-                          "flex-end",
-                        gap:
-                          "8px",
-                        marginTop:
-                          "20px"
-                      }
-                    },
-
-                    React.createElement(
-                      "button",
-                      {
-                        type:
-                          "button",
-
-                        className:
-                          "btn btn-secondary",
-
-                        onClick:
-                          closeCreateUser,
-
-                        disabled:
-                          creatingUser
-                      },
-                      "Cancel"
-                    ),
-
-                    React.createElement(
-                      "button",
-                      {
-                        type:
-                          "submit",
-
-                        className:
-                          "btn btn-primary",
-
-                        disabled:
-                          creatingUser
-                      },
-                      creatingUser
-                        ? "Creating..."
-                        : "Create User"
-                    )
-                  )
-                )
-          )
+          success
         )
       : null,
 
+    credentialCard,
 
-    /* ====================================================
-       LOADING
-    ==================================================== */
+    createUserForm,
+
+    unitFormCard,
 
     loading
       ? React.createElement(
@@ -1212,24 +1699,16 @@ export default function Administration({
           },
           "Loading administration data..."
         )
+
       : React.createElement(
           React.Fragment,
           null,
-
-
-          /* ==============================================
-             SUMMARY
-          ============================================== */
 
           React.createElement(
             "div",
             {
               className:
-                "grid grid-4",
-              style: {
-                marginTop:
-                  "16px"
-              }
+                "grid grid-4"
             },
 
             React.createElement(
@@ -1255,6 +1734,55 @@ export default function Administration({
                     "stat-number"
                 },
                 profiles.length
+              ),
+
+              React.createElement(
+                "div",
+                {
+                  className:
+                    "muted"
+                },
+                activeUsers.length +
+                  " active"
+              )
+            ),
+
+            React.createElement(
+              "div",
+              {
+                className:
+                  "card"
+              },
+
+              React.createElement(
+                "div",
+                {
+                  className:
+                    "stat-label"
+                },
+                "Units"
+              ),
+
+              React.createElement(
+                "div",
+                {
+                  className:
+                    "stat-number"
+                },
+                units.length
+              ),
+
+              React.createElement(
+                "div",
+                {
+                  className:
+                    "muted"
+                },
+                units.filter(
+                  (unit) =>
+                    unit.active !== false
+                ).length +
+                  " active"
               )
             ),
 
@@ -1297,32 +1825,6 @@ export default function Administration({
                   className:
                     "stat-label"
                 },
-                "Units"
-              ),
-
-              React.createElement(
-                "div",
-                {
-                  className:
-                    "stat-number"
-                },
-                units.length
-              )
-            ),
-
-            React.createElement(
-              "div",
-              {
-                className:
-                  "card"
-              },
-
-              React.createElement(
-                "div",
-                {
-                  className:
-                    "stat-label"
-                },
                 "Beds"
               ),
 
@@ -1337,20 +1839,269 @@ export default function Administration({
             )
           ),
 
+          React.createElement(
+            "div",
+            {
+              className:
+                "card"
+            },
 
-          /* ==============================================
-             USERS
-          ============================================== */
+            React.createElement(
+              "div",
+              {
+                className:
+                  "row wrap"
+              },
+
+              React.createElement(
+                "div",
+                null,
+
+                React.createElement(
+                  "div",
+                  {
+                    className:
+                      "section-title"
+                  },
+                  "Units & Current Consultants"
+                ),
+
+                React.createElement(
+                  "div",
+                  {
+                    className:
+                      "page-subtitle"
+                  },
+                  "Operational unit configuration. Consultant assignments are stored separately so previous assignments can remain in the history."
+                )
+              ),
+
+              React.createElement(
+                "button",
+                {
+                  className:
+                    "btn btn-primary",
+
+                  type:
+                    "button",
+
+                  onClick:
+                    openAddUnit
+                },
+                "+ Add Unit"
+              )
+            ),
+
+            units.length === 0
+
+              ? React.createElement(
+                  "div",
+                  {
+                    className:
+                      "empty",
+                    style: {
+                      marginTop:
+                        "12px"
+                    }
+                  },
+                  "No units configured."
+                )
+
+              : React.createElement(
+                  "div",
+                  {
+                    className:
+                      "table-wrap",
+                    style: {
+                      marginTop:
+                        "12px"
+                    }
+                  },
+
+                  React.createElement(
+                    "table",
+                    null,
+
+                    React.createElement(
+                      "thead",
+                      null,
+
+                      React.createElement(
+                        "tr",
+                        null,
+
+                        React.createElement(
+                          "th",
+                          null,
+                          "Unit"
+                        ),
+
+                        React.createElement(
+                          "th",
+                          null,
+                          "Department"
+                        ),
+
+                        React.createElement(
+                          "th",
+                          null,
+                          "Type"
+                        ),
+
+                        React.createElement(
+                          "th",
+                          null,
+                          "Current Consultant"
+                        ),
+
+                        React.createElement(
+                          "th",
+                          null,
+                          "Status"
+                        ),
+
+                        React.createElement(
+                          "th",
+                          null,
+                          "Action"
+                        )
+                      )
+                    ),
+
+                    React.createElement(
+                      "tbody",
+                      null,
+
+                      units.map(
+                        (unit) => {
+                          const department =
+                            departments.find(
+                              (item) =>
+                                item.id ===
+                                unit.department_id
+                            );
+
+                          const consultant =
+                            getCurrentConsultant(
+                              unit.id
+                            );
+
+                          return React.createElement(
+                            "tr",
+                            {
+                              key:
+                                unit.id
+                            },
+
+                            React.createElement(
+                              "td",
+                              null,
+
+                              React.createElement(
+                                "strong",
+                                null,
+                                unit.name ||
+                                  "—"
+                              ),
+
+                              unit.code
+                                ? React.createElement(
+                                    "div",
+                                    {
+                                      className:
+                                        "muted"
+                                    },
+                                    unit.code
+                                  )
+                                : null
+                            ),
+
+                            React.createElement(
+                              "td",
+                              null,
+                              department?.name ||
+                                "—"
+                            ),
+
+                            React.createElement(
+                              "td",
+                              null,
+                              getUnitTypeLabel(
+                                unit.unit_type
+                              )
+                            ),
+
+                            React.createElement(
+                              "td",
+                              null,
+                              consultant
+                                ? consultant.display_name ||
+                                  consultant.login_id
+                                : React.createElement(
+                                    "span",
+                                    {
+                                      className:
+                                        "muted"
+                                    },
+                                    "Not assigned"
+                                  )
+                            ),
+
+                            React.createElement(
+                              "td",
+                              null,
+
+                              React.createElement(
+                                "span",
+                                {
+                                  className:
+                                    unit.active !==
+                                    false
+                                      ? "badge badge-stable"
+                                      : "badge badge-unstable"
+                                },
+                                unit.active !==
+                                false
+                                  ? "Active"
+                                  : "Inactive"
+                              )
+                            ),
+
+                            React.createElement(
+                              "td",
+                              null,
+
+                              React.createElement(
+                                "button",
+                                {
+                                  className:
+                                    "btn btn-secondary",
+
+                                  type:
+                                    "button",
+
+                                  onClick:
+                                    () =>
+                                      openEditUnit(
+                                        unit
+                                      )
+                                },
+                                "Edit"
+                              )
+                            )
+                          );
+                        }
+                      )
+                    )
+                  )
+                )
+          ),
 
           React.createElement(
             "div",
             {
               className:
-                "card",
-              style: {
-                marginTop:
-                  "16px"
-              }
+                "card"
             },
 
             React.createElement(
@@ -1359,7 +2110,7 @@ export default function Administration({
                 className:
                   "section-title"
               },
-              "Users"
+              "Users & Roles"
             ),
 
             profiles.length === 0
@@ -1419,12 +2170,6 @@ export default function Administration({
                         React.createElement(
                           "th",
                           null,
-                          "Home Unit"
-                        ),
-
-                        React.createElement(
-                          "th",
-                          null,
                           "Status"
                         )
                       )
@@ -1438,16 +2183,9 @@ export default function Administration({
                         (user) => {
                           const department =
                             departments.find(
-                              (department) =>
-                                department.id ===
+                              (item) =>
+                                item.id ===
                                 user.department_id
-                            );
-
-                          const unit =
-                            units.find(
-                              (unit) =>
-                                unit.id ===
-                                user.home_unit_id
                             );
 
                           return React.createElement(
@@ -1468,7 +2206,6 @@ export default function Administration({
                               "td",
                               null,
                               user.login_id ||
-                                user.email ||
                                 "—"
                             ),
 
@@ -1484,13 +2221,6 @@ export default function Administration({
                               "td",
                               null,
                               department?.name ||
-                                "—"
-                            ),
-
-                            React.createElement(
-                              "td",
-                              null,
-                              unit?.name ||
                                 "—"
                             ),
 
@@ -1520,20 +2250,89 @@ export default function Administration({
                 )
           ),
 
+          React.createElement(
+            "div",
+            {
+              className:
+                "card"
+            },
 
-          /* ==============================================
-             DEPARTMENTS + UNITS
-          ============================================== */
+            React.createElement(
+              "div",
+              {
+                className:
+                  "section-title"
+              },
+              "Permission Catalog"
+            ),
+
+            permissions.length === 0
+
+              ? React.createElement(
+                  "div",
+                  {
+                    className:
+                      "empty"
+                  },
+                  "No permissions configured."
+                )
+
+              : React.createElement(
+                  "div",
+                  {
+                    className:
+                      "grid grid-2"
+                  },
+
+                  permissions.map(
+                    (permission) =>
+                      React.createElement(
+                        "div",
+                        {
+                          key:
+                            permission.id,
+
+                          className:
+                            "detail-box"
+                        },
+
+                        React.createElement(
+                          "strong",
+                          null,
+                          permission.code
+                        ),
+
+                        permission.name
+                          ? React.createElement(
+                              "div",
+                              {
+                                className:
+                                  "muted"
+                              },
+                              permission.name
+                            )
+                          : null,
+
+                        permission.description
+                          ? React.createElement(
+                              "div",
+                              {
+                                className:
+                                  "muted"
+                              },
+                              permission.description
+                            )
+                          : null
+                      )
+                  )
+                )
+          ),
 
           React.createElement(
             "div",
             {
               className:
-                "grid grid-2",
-              style: {
-                marginTop:
-                  "16px"
-              }
+                "grid grid-2"
             },
 
             React.createElement(
@@ -1564,9 +2363,7 @@ export default function Administration({
                   )
 
                 : departments.map(
-                    (
-                      department
-                    ) =>
+                    (department) =>
                       React.createElement(
                         "div",
                         {
@@ -1613,7 +2410,6 @@ export default function Administration({
                   )
             ),
 
-
             React.createElement(
               "div",
               {
@@ -1627,10 +2423,10 @@ export default function Administration({
                   className:
                     "section-title"
                 },
-                "Units"
+                "Wards"
               ),
 
-              units.length === 0
+              wards.length === 0
 
                 ? React.createElement(
                     "div",
@@ -1638,27 +2434,16 @@ export default function Administration({
                       className:
                         "empty"
                     },
-                    "No units found."
+                    "No wards found."
                   )
 
-                : units.map(
-                    (
-                      unit
-                    ) => {
-                      const department =
-                        departments.find(
-                          (
-                            department
-                          ) =>
-                            department.id ===
-                            unit.department_id
-                        );
-
-                      return React.createElement(
+                : wards.map(
+                    (ward) =>
+                      React.createElement(
                         "div",
                         {
                           key:
-                            unit.id,
+                            ward.id,
 
                           className:
                             "detail-box",
@@ -1679,198 +2464,33 @@ export default function Administration({
                           React.createElement(
                             "strong",
                             null,
-                            unit.name
+                            ward.name
                           ),
 
                           React.createElement(
                             "span",
                             {
                               className:
-                                "muted small"
+                                ward.active
+                                  ? "badge badge-stable"
+                                  : "badge badge-unstable"
                             },
-                            department?.name ||
-                              "—"
+
+                            ward.active
+                              ? "Active"
+                              : "Inactive"
                           )
                         )
-                      );
-                    }
+                      )
                   )
             )
           ),
 
-
-          /* ==============================================
-             WARDS
-          ============================================== */
-
           React.createElement(
             "div",
             {
               className:
-                "card",
-              style: {
-                marginTop:
-                  "16px"
-              }
-            },
-
-            React.createElement(
-              "div",
-              {
-                className:
-                  "section-title"
-              },
-              "Wards"
-            ),
-
-            wards.length === 0
-
-              ? React.createElement(
-                  "div",
-                  {
-                    className:
-                      "empty"
-                  },
-                  "No wards found."
-                )
-
-              : React.createElement(
-                  "div",
-                  {
-                    className:
-                      "table-wrap"
-                  },
-
-                  React.createElement(
-                    "table",
-                    null,
-
-                    React.createElement(
-                      "thead",
-                      null,
-
-                      React.createElement(
-                        "tr",
-                        null,
-
-                        React.createElement(
-                          "th",
-                          null,
-                          "Ward"
-                        ),
-
-                        React.createElement(
-                          "th",
-                          null,
-                          "Department"
-                        ),
-
-                        React.createElement(
-                          "th",
-                          null,
-                          "Unit"
-                        ),
-
-                        React.createElement(
-                          "th",
-                          null,
-                          "Status"
-                        )
-                      )
-                    ),
-
-                    React.createElement(
-                      "tbody",
-                      null,
-
-                      wards.map(
-                        (ward) => {
-                          const department =
-                            departments.find(
-                              (
-                                department
-                              ) =>
-                                department.id ===
-                                ward.department_id
-                            );
-
-                          const unit =
-                            units.find(
-                              (
-                                unit
-                              ) =>
-                                unit.id ===
-                                ward.unit_id
-                            );
-
-                          return React.createElement(
-                            "tr",
-                            {
-                              key:
-                                ward.id
-                            },
-
-                            React.createElement(
-                              "td",
-                              null,
-                              ward.name ||
-                                "—"
-                            ),
-
-                            React.createElement(
-                              "td",
-                              null,
-                              department?.name ||
-                                "—"
-                            ),
-
-                            React.createElement(
-                              "td",
-                              null,
-                              unit?.name ||
-                                "—"
-                            ),
-
-                            React.createElement(
-                              "td",
-                              null,
-
-                              React.createElement(
-                                "span",
-                                {
-                                  className:
-                                    ward.active
-                                      ? "badge badge-stable"
-                                      : "badge badge-unstable"
-                                },
-
-                                ward.active
-                                  ? "Active"
-                                  : "Inactive"
-                              )
-                            )
-                          );
-                        }
-                      )
-                    )
-                  )
-                )
-          ),
-
-
-          /* ==============================================
-             BEDS
-          ============================================== */
-
-          React.createElement(
-            "div",
-            {
-              className:
-                "card",
-              style: {
-                marginTop:
-                  "16px"
-              }
+                "card"
             },
 
             React.createElement(
@@ -1937,17 +2557,8 @@ export default function Administration({
                       null,
 
                       beds.map(
-                        (bed) => {
-                          const ward =
-                            wards.find(
-                              (
-                                ward
-                              ) =>
-                                ward.id ===
-                                bed.ward_id
-                            );
-
-                          return React.createElement(
+                        (bed) =>
+                          React.createElement(
                             "tr",
                             {
                               key:
@@ -1964,7 +2575,7 @@ export default function Administration({
                             React.createElement(
                               "td",
                               null,
-                              ward?.name ||
+                              bed.ward_id ||
                                 "—"
                             ),
 
@@ -1986,8 +2597,7 @@ export default function Administration({
                                   : "Inactive"
                               )
                             )
-                          );
-                        }
+                          )
                       )
                     )
                   )
@@ -1995,4 +2605,4 @@ export default function Administration({
           )
         )
   );
-}
+        }
