@@ -1,3 +1,5 @@
+import "./styles/prism.css";
+
 import React, {
   useCallback,
   useEffect,
@@ -1797,4 +1799,4 @@ if (!root) {
       )
     );
   }
-                }
+            }
