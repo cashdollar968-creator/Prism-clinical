@@ -59,6 +59,8 @@ function NewPatientModal({ onClose, onCreated }) {
   const [profiles, setProfiles] = useState([]);
   const [accessibleUnitIds, setAccessibleUnitIds] = useState([]);
 
+  const [currentUserId, setCurrentUserId] = useState(null);
+
   const [form, setForm] = useState({
     patient_code: "",
     full_name: "",
@@ -70,7 +72,9 @@ function NewPatientModal({ onClose, onCreated }) {
     bed_id: "",
     responsible_mo_id: "",
     specialist_id: "",
-    admission_datetime: new Date().toISOString().slice(0, 16),
+    admission_datetime: new Date()
+      .toISOString()
+      .slice(0, 16),
     reason_for_admission: "",
     brief_summary: "",
     working_diagnosis: "",
@@ -81,8 +85,6 @@ function NewPatientModal({ onClose, onCreated }) {
     goals_targets: "",
     demo: false,
   });
-
-  const [currentUserId, setCurrentUserId] = useState(null);
 
   useEffect(() => {
     loadOptions();
@@ -107,54 +109,69 @@ function NewPatientModal({ onClose, onCreated }) {
       setCurrentUserId(user.id);
 
       /*
-       * 1. Get the current user's active Unit assignments.
-       *    Clinical scope comes from user_department_roles,
-       *    not from the legacy profiles.role field.
+       * Current user's active clinical assignments.
        */
-      const { data: myRoles, error: rolesError } = await db
-        .from("user_department_roles")
-        .select(
-          `
-          id,
-          user_id,
-          department_role_id,
-          unit_id,
-          active,
-          start_at,
-          end_at,
-          department_roles (
+      const { data: myRoles, error: rolesError } =
+        await db
+          .from("user_department_roles")
+          .select(
+            `
             id,
-            department_id,
-            code,
-            name,
-            active
+            user_id,
+            department_role_id,
+            unit_id,
+            active,
+            start_at,
+            end_at,
+            department_roles (
+              id,
+              department_id,
+              code,
+              name,
+              active
+            )
+          `
           )
-        `
-        )
-        .eq("user_id", user.id)
-        .eq("active", true);
+          .eq("user_id", user.id)
+          .eq("active", true);
 
       if (rolesError) throw rolesError;
 
-      const validRoles = (myRoles || []).filter((r) => {
-        if (!r.active) return false;
+      const now = new Date();
 
-        const now = new Date();
+      const validRoles = (myRoles || []).filter(
+        (role) => {
+          if (!role.active) return false;
 
-        if (r.start_at && new Date(r.start_at) > now) return false;
-        if (r.end_at && new Date(r.end_at) < now) return false;
+          if (
+            role.start_at &&
+            new Date(role.start_at) > now
+          ) {
+            return false;
+          }
 
-        if (r.department_roles && !r.department_roles.active) {
-          return false;
+          if (
+            role.end_at &&
+            new Date(role.end_at) < now
+          ) {
+            return false;
+          }
+
+          if (
+            role.department_roles &&
+            !role.department_roles.active
+          ) {
+            return false;
+          }
+
+          return true;
         }
-
-        return true;
-      });
+      );
 
       const unitIds = [
         ...new Set(
           validRoles
-            .map((r) => r.unit_id)
+            .map((role) => role.unit_id)
             .filter(Boolean)
         ),
       ];
@@ -162,20 +179,30 @@ function NewPatientModal({ onClose, onCreated }) {
       setAccessibleUnitIds(unitIds);
 
       /*
-       * 2. Departments.
+       * Departments.
        */
-      const { data: departmentData, error: departmentError } = await db
+      const {
+        data: departmentData,
+        error: departmentError,
+      } = await db
         .from("departments")
-        .select("id,name,hospital_id,active")
+        .select(
+          "id,name,hospital_id,active"
+        )
         .eq("active", true)
         .order("name");
 
-      if (departmentError) throw departmentError;
+      if (departmentError) {
+        throw departmentError;
+      }
 
       /*
-       * 3. Units.
+       * Units.
        */
-      const { data: unitData, error: unitError } = await db
+      const {
+        data: unitData,
+        error: unitError,
+      } = await db
         .from("units")
         .select(
           "id,name,code,department_id,unit_type,coverage,active"
@@ -186,56 +213,77 @@ function NewPatientModal({ onClose, onCreated }) {
       if (unitError) throw unitError;
 
       /*
-       * 4. Wards.
+       * Wards.
        */
-      const { data: wardData, error: wardError } = await db
+      const {
+        data: wardData,
+        error: wardError,
+      } = await db
         .from("wards")
-        .select("id,name,department_id,unit_id,active")
+        .select(
+          "id,name,department_id,unit_id,active"
+        )
         .eq("active", true)
         .order("name");
 
       if (wardError) throw wardError;
 
       /*
-       * 5. Beds.
-       * beds currently have no dedicated status column.
-       * Availability will therefore be calculated from active admissions.
+       * Beds.
        */
-      const { data: bedData, error: bedError } = await db
+      const {
+        data: bedData,
+        error: bedError,
+      } = await db
         .from("beds")
-        .select("id,name,ward_id,active")
+        .select(
+          "id,name,ward_id,active"
+        )
         .eq("active", true)
         .order("name");
 
       if (bedError) throw bedError;
 
       /*
-       * 6. Active admissions are used to determine occupied beds.
+       * Determine occupied beds from active admissions.
        */
-      const { data: activeAdmissions, error: admissionsError } = await db
+      const {
+        data: activeAdmissions,
+        error: admissionsError,
+      } = await db
         .from("admissions")
-        .select("id,bed_id,status")
-        .in("status", ["active", "inpatient"]);
+        .select(
+          "id,bed_id,status"
+        )
+        .in("status", [
+          "active",
+          "inpatient",
+        ]);
 
-      if (admissionsError) throw admissionsError;
+      if (admissionsError) {
+        throw admissionsError;
+      }
 
       const occupiedBedIds = new Set(
         (activeAdmissions || [])
-          .map((a) => a.bed_id)
+          .map((admission) => admission.bed_id)
           .filter(Boolean)
       );
 
-      const bedsWithAvailability = (bedData || []).map((bed) => ({
-        ...bed,
-        available: !occupiedBedIds.has(bed.id),
-      }));
+      const bedsWithAvailability =
+        (bedData || []).map((bed) => ({
+          ...bed,
+          available:
+            !occupiedBedIds.has(bed.id),
+        }));
 
       /*
-       * 7. Active profiles.
-       * We load profiles once, then determine clinical role through
-       * user_department_roles instead of relying on profiles.role.
+       * Active profiles.
        */
-      const { data: profileData, error: profileError } = await db
+      const {
+        data: profileData,
+        error: profileError,
+      } = await db
         .from("profiles")
         .select(
           "id,display_name,email,role,department_id,active"
@@ -246,9 +294,12 @@ function NewPatientModal({ onClose, onCreated }) {
       if (profileError) throw profileError;
 
       /*
-       * 8. Get active role assignments for all users.
+       * Active role assignments for all users.
        */
-      const { data: allUserRoles, error: allRolesError } = await db
+      const {
+        data: allUserRoles,
+        error: allRolesError,
+      } = await db
         .from("user_department_roles")
         .select(
           `
@@ -270,97 +321,147 @@ function NewPatientModal({ onClose, onCreated }) {
         )
         .eq("active", true);
 
-      if (allRolesError) throw allRolesError;
+      if (allRolesError) {
+        throw allRolesError;
+      }
 
-      const now = new Date();
+      const validUserRoles =
+        (allUserRoles || []).filter(
+          (role) => {
+            if (!role.active) return false;
 
-      const validUserRoles = (allUserRoles || []).filter((r) => {
-        if (!r.active) return false;
+            if (
+              role.start_at &&
+              new Date(role.start_at) > now
+            ) {
+              return false;
+            }
 
-        if (r.start_at && new Date(r.start_at) > now) return false;
-        if (r.end_at && new Date(r.end_at) < now) return false;
+            if (
+              role.end_at &&
+              new Date(role.end_at) < now
+            ) {
+              return false;
+            }
 
-        if (r.department_roles && !r.department_roles.active) {
-          return false;
-        }
+            if (
+              role.department_roles &&
+              !role.department_roles.active
+            ) {
+              return false;
+            }
 
-        return true;
-      });
+            return true;
+          }
+        );
 
       const profileAssignments = {};
 
       for (const role of validUserRoles) {
         if (!profileAssignments[role.user_id]) {
-          profileAssignments[role.user_id] = [];
+          profileAssignments[role.user_id] =
+            [];
         }
 
-        profileAssignments[role.user_id].push(role);
+        profileAssignments[
+          role.user_id
+        ].push(role);
       }
 
-      const enrichedProfiles = (profileData || []).map((profile) => ({
-        ...profile,
-        assignments: profileAssignments[profile.id] || [],
-      }));
+      const enrichedProfiles =
+        (profileData || []).map(
+          (profile) => ({
+            ...profile,
+            assignments:
+              profileAssignments[
+                profile.id
+              ] || [],
+          })
+        );
 
-      setDepartments(departmentData || []);
+      setDepartments(
+        departmentData || []
+      );
       setUnits(unitData || []);
       setWards(wardData || []);
       setBeds(bedsWithAvailability);
       setProfiles(enrichedProfiles);
 
       /*
-       * 9. Automatically choose the only accessible Unit.
+       * If only one Unit is accessible,
+       * select it automatically.
        */
       if (unitIds.length === 1) {
-        const selectedUnit = (unitData || []).find(
-          (u) => u.id === unitIds[0]
-        );
+        const selectedUnit =
+          (unitData || []).find(
+            (unit) =>
+              unit.id === unitIds[0]
+          );
 
         if (selectedUnit) {
-          setForm((prev) => ({
-            ...prev,
-            department_id: selectedUnit.department_id,
+          setForm((previous) => ({
+            ...previous,
+            department_id:
+              selectedUnit.department_id,
             unit_id: selectedUnit.id,
           }));
         }
       }
     } catch (err) {
       console.error(err);
-      setError(err?.message || "Failed to load admission options.");
+
+      setError(
+        err?.message ||
+          "Failed to load admission options."
+      );
     } finally {
       setLoading(false);
     }
   }
 
   /*
-   * Accessible Units.
-   *
-   * Normal clinical users:
-   *   only units assigned through user_department_roles.
-   *
-   * If no explicit unit assignment exists, do not silently expose
-   * every Unit to the user.
+   * Only Units assigned to current user.
    */
   const availableUnits = useMemo(() => {
-    if (accessibleUnitIds.length === 0) return [];
+    if (
+      accessibleUnitIds.length === 0
+    ) {
+      return [];
+    }
 
     return units.filter((unit) =>
-      accessibleUnitIds.includes(unit.id)
+      accessibleUnitIds.includes(
+        unit.id
+      )
     );
-  }, [units, accessibleUnitIds]);
+  }, [
+    units,
+    accessibleUnitIds,
+  ]);
 
   /*
    * Departments are derived from accessible Units.
    */
-  const availableDepartments = useMemo(() => {
-    const ids = new Set(
-      availableUnits.map((unit) => unit.department_id)
-    );
+  const availableDepartments =
+    useMemo(() => {
+      const departmentIds =
+        new Set(
+          availableUnits.map(
+            (unit) =>
+              unit.department_id
+          )
+        );
 
-    return departments.filter((department) =>
-      ids.has(department.id)
-    );
-  }, [departments, availableUnits]);
+      return departments.filter(
+        (department) =>
+          departmentIds.has(
+            department.id
+          )
+      );
+    }, [
+      departments,
+      availableUnits,
+    ]);
 
   /*
    * Unit → Ward.
@@ -371,14 +472,16 @@ function NewPatientModal({ onClose, onCreated }) {
     return wards.filter(
       (ward) =>
         ward.active &&
-        ward.unit_id === form.unit_id
+        ward.unit_id ===
+          form.unit_id
     );
-  }, [wards, form.unit_id]);
+  }, [
+    wards,
+    form.unit_id,
+  ]);
 
   /*
-   * Ward → Bed.
-   *
-   * Only active and currently available beds are shown.
+   * Ward → available Bed.
    */
   const availableBeds = useMemo(() => {
     if (!form.ward_id) return [];
@@ -386,95 +489,147 @@ function NewPatientModal({ onClose, onCreated }) {
     return beds.filter(
       (bed) =>
         bed.active &&
-        bed.ward_id === form.ward_id &&
+        bed.ward_id ===
+          form.ward_id &&
         bed.available
     );
-  }, [beds, form.ward_id]);
+  }, [
+    beds,
+    form.ward_id,
+  ]);
 
   /*
-   * Doctors assigned to the selected Unit.
-   *
-   * Medical Officer:
-   * role code/name contains medical officer / MO.
-   *
-   * Specialist:
-   * consultant / specialist / fellow.
-   *
-   * This deliberately avoids the old:
-   * profile.role === "medical_officer"
-   * logic.
+   * Users assigned to selected Unit.
    */
   const unitProfiles = useMemo(() => {
     if (!form.unit_id) return [];
 
-    return profiles.filter((profile) =>
-      profile.assignments.some(
-        (assignment) =>
-          assignment.unit_id === form.unit_id
-      )
+    return profiles.filter(
+      (profile) =>
+        profile.assignments.some(
+          (assignment) =>
+            assignment.unit_id ===
+            form.unit_id
+        )
     );
-  }, [profiles, form.unit_id]);
-
-  const medicalOfficers = useMemo(() => {
-    return unitProfiles.filter((profile) =>
-      profile.assignments.some((assignment) => {
-        const code = (
-          assignment.department_roles?.code || ""
-        ).toLowerCase();
-
-        const name = (
-          assignment.department_roles?.name || ""
-        ).toLowerCase();
-
-        return (
-          code.includes("medical_officer") ||
-          code.includes("medical officer") ||
-          code === "mo" ||
-          name.includes("medical officer") ||
-          name.includes("medical officer")
-        );
-      })
-    );
-  }, [unitProfiles]);
-
-  const specialists = useMemo(() => {
-    return unitProfiles.filter((profile) =>
-      profile.assignments.some((assignment) => {
-        const code = (
-          assignment.department_roles?.code || ""
-        ).toLowerCase();
-
-        const name = (
-          assignment.department_roles?.name || ""
-        ).toLowerCase();
-
-        return (
-          code.includes("consultant") ||
-          code.includes("specialist") ||
-          code.includes("fellow") ||
-          name.includes("consultant") ||
-          name.includes("specialist") ||
-          name.includes("fellow")
-        );
-      })
-    );
-  }, [unitProfiles]);
+  }, [
+    profiles,
+    form.unit_id,
+  ]);
 
   /*
-   * If the current user is a Medical Officer in the selected Unit,
-   * automatically select them.
+   * Medical Officers.
+   */
+  const medicalOfficers =
+    useMemo(() => {
+      return unitProfiles.filter(
+        (profile) =>
+          profile.assignments.some(
+            (assignment) => {
+              const code =
+                (
+                  assignment
+                    .department_roles
+                    ?.code || ""
+                ).toLowerCase();
+
+              const name =
+                (
+                  assignment
+                    .department_roles
+                    ?.name || ""
+                ).toLowerCase();
+
+              return (
+                code.includes(
+                  "medical_officer"
+                ) ||
+                code.includes(
+                  "medical officer"
+                ) ||
+                code === "mo" ||
+                name.includes(
+                  "medical officer"
+                )
+              );
+            }
+          )
+      );
+    }, [unitProfiles]);
+
+  /*
+   * Consultants / Specialists / Fellows.
+   */
+  const specialists =
+    useMemo(() => {
+      return unitProfiles.filter(
+        (profile) =>
+          profile.assignments.some(
+            (assignment) => {
+              const code =
+                (
+                  assignment
+                    .department_roles
+                    ?.code || ""
+                ).toLowerCase();
+
+              const name =
+                (
+                  assignment
+                    .department_roles
+                    ?.name || ""
+                ).toLowerCase();
+
+              return (
+                code.includes(
+                  "consultant"
+                ) ||
+                code.includes(
+                  "specialist"
+                ) ||
+                code.includes(
+                  "fellow"
+                ) ||
+                name.includes(
+                  "consultant"
+                ) ||
+                name.includes(
+                  "specialist"
+                ) ||
+                name.includes(
+                  "fellow"
+                )
+              );
+            }
+          )
+      );
+    }, [unitProfiles]);
+
+  /*
+   * Automatically select current user
+   * if they are a Medical Officer.
    */
   useEffect(() => {
-    if (!currentUserId || !form.unit_id) return;
+    if (
+      !currentUserId ||
+      !form.unit_id ||
+      form.responsible_mo_id
+    ) {
+      return;
+    }
 
-    const me = medicalOfficers.find(
-      (profile) => profile.id === currentUserId
-    );
+    const currentUser =
+      medicalOfficers.find(
+        (profile) =>
+          profile.id ===
+          currentUserId
+      );
 
-    if (me && !form.responsible_mo_id) {
-      setForm((prev) => ({
-        ...prev,
-        responsible_mo_id: me.id,
+    if (currentUser) {
+      setForm((previous) => ({
+        ...previous,
+        responsible_mo_id:
+          currentUser.id,
       }));
     }
   }, [
@@ -484,17 +639,23 @@ function NewPatientModal({ onClose, onCreated }) {
     medicalOfficers,
   ]);
 
-  function updateField(field, value) {
-    setForm((prev) => ({
-      ...prev,
+  function updateField(
+    field,
+    value
+  ) {
+    setForm((previous) => ({
+      ...previous,
       [field]: value,
     }));
   }
 
-  function handleDepartmentChange(departmentId) {
-    setForm((prev) => ({
-      ...prev,
-      department_id: departmentId,
+  function handleDepartmentChange(
+    departmentId
+  ) {
+    setForm((previous) => ({
+      ...previous,
+      department_id:
+        departmentId,
       unit_id: "",
       ward_id: "",
       bed_id: "",
@@ -503,15 +664,20 @@ function NewPatientModal({ onClose, onCreated }) {
     }));
   }
 
-  function handleUnitChange(unitId) {
-    const unit = availableUnits.find(
-      (item) => item.id === unitId
-    );
+  function handleUnitChange(
+    unitId
+  ) {
+    const unit =
+      availableUnits.find(
+        (item) =>
+          item.id === unitId
+      );
 
-    setForm((prev) => ({
-      ...prev,
+    setForm((previous) => ({
+      ...previous,
       department_id:
-        unit?.department_id || prev.department_id,
+        unit?.department_id ||
+        previous.department_id,
       unit_id: unitId,
       ward_id: "",
       bed_id: "",
@@ -520,9 +686,11 @@ function NewPatientModal({ onClose, onCreated }) {
     }));
   }
 
-  function handleWardChange(wardId) {
-    setForm((prev) => ({
-      ...prev,
+  function handleWardChange(
+    wardId
+  ) {
+    setForm((previous) => ({
+      ...previous,
       ward_id: wardId,
       bed_id: "",
     }));
@@ -534,17 +702,26 @@ function NewPatientModal({ onClose, onCreated }) {
     setError("");
 
     if (!form.patient_code.trim()) {
-      setError("Patient code is required.");
+      setError(
+        "Patient code is required."
+      );
       return;
     }
 
     if (!form.full_name.trim()) {
-      setError("Patient name is required.");
+      setError(
+        "Patient name is required."
+      );
       return;
     }
 
-    if (!form.age || Number(form.age) < 0) {
-      setError("Valid patient age is required.");
+    if (
+      !form.age ||
+      Number(form.age) < 0
+    ) {
+      setError(
+        "Valid patient age is required."
+      );
       return;
     }
 
@@ -554,7 +731,9 @@ function NewPatientModal({ onClose, onCreated }) {
     }
 
     if (!form.department_id) {
-      setError("Department is required.");
+      setError(
+        "Department is required."
+      );
       return;
     }
 
@@ -568,38 +747,54 @@ function NewPatientModal({ onClose, onCreated }) {
       return;
     }
 
-    if (!form.reason_for_admission.trim()) {
-      setError("Reason for admission is required.");
+    if (
+      !form.reason_for_admission.trim()
+    ) {
+      setError(
+        "Reason for admission is required."
+      );
       return;
     }
 
     if (!form.responsible_mo_id) {
-      setError("Responsible Medical Officer is required.");
+      setError(
+        "Responsible Medical Officer is required."
+      );
       return;
     }
 
-    const selectedUnit = availableUnits.find(
-      (unit) => unit.id === form.unit_id
-    );
+    const selectedUnit =
+      availableUnits.find(
+        (unit) =>
+          unit.id === form.unit_id
+      );
 
-    const selectedWard = availableWards.find(
-      (ward) => ward.id === form.ward_id
-    );
+    const selectedWard =
+      availableWards.find(
+        (ward) =>
+          ward.id === form.ward_id
+      );
 
     if (!selectedUnit) {
-      setError("Selected Unit is not accessible.");
+      setError(
+        "Selected Unit is not accessible."
+      );
       return;
     }
 
     if (!selectedWard) {
-      setError("Selected Ward does not belong to this Unit.");
+      setError(
+        "Selected Ward does not belong to this Unit."
+      );
       return;
     }
 
     if (form.bed_id) {
-      const selectedBed = availableBeds.find(
-        (bed) => bed.id === form.bed_id
-      );
+      const selectedBed =
+        availableBeds.find(
+          (bed) =>
+            bed.id === form.bed_id
+        );
 
       if (!selectedBed) {
         setError(
@@ -613,49 +808,73 @@ function NewPatientModal({ onClose, onCreated }) {
       setSaving(true);
 
       /*
-       * Step 1:
-       * Create Patient + Admission through the canonical RPC.
+       * Create Patient + Admission.
        */
-      const { data, error: rpcError } = await db.rpc(
+      const {
+        data,
+        error: rpcError,
+      } = await db.rpc(
         "prism_create_patient_admission",
         {
-          p_patient_code: form.patient_code.trim(),
-          p_full_name: form.full_name.trim(),
+          p_patient_code:
+            form.patient_code.trim(),
+
+          p_full_name:
+            form.full_name.trim(),
+
           p_age: Number(form.age),
+
           p_sex: form.sex,
+
           p_admission_datetime:
             form.admission_datetime
-              ? new Date(form.admission_datetime).toISOString()
+              ? new Date(
+                  form.admission_datetime
+                ).toISOString()
               : new Date().toISOString(),
+
           p_reason_for_admission:
             form.reason_for_admission.trim(),
+
           p_working_diagnosis:
-            form.working_diagnosis.trim() || null,
-          p_department_id: form.department_id,
-          p_unit_id: form.unit_id,
-          p_ward_id: form.ward_id,
-          p_bed_id: form.bed_id || null,
+            form.working_diagnosis.trim() ||
+            null,
+
+          p_department_id:
+            form.department_id,
+
+          p_unit_id:
+            form.unit_id,
+
+          p_ward_id:
+            form.ward_id,
+
+          p_bed_id:
+            form.bed_id || null,
+
           p_responsible_mo_id:
             form.responsible_mo_id,
+
           p_specialist_id:
             form.specialist_id || null,
         }
       );
 
-      if (rpcError) throw rpcError;
+      if (rpcError) {
+        throw rpcError;
+      }
 
-      if (!data?.patient_id || !data?.admission_id) {
+      if (
+        !data?.patient_id ||
+        !data?.admission_id
+      ) {
         throw new Error(
           "Admission was not created correctly."
         );
       }
 
       /*
-       * Step 2:
-       * Save the additional Admission Clinical Data.
-       *
-       * These fields are intentionally saved separately because
-       * prism_create_patient_admission does not contain them.
+       * Save additional clinical admission data.
        */
       const hasClinicalData =
         form.brief_summary.trim() ||
@@ -667,40 +886,54 @@ function NewPatientModal({ onClose, onCreated }) {
         form.goals_targets.trim();
 
       if (hasClinicalData) {
-        const { error: clinicalError } = await db.rpc(
+        const {
+          error: clinicalError,
+        } = await db.rpc(
           "prism_update_admission_clinical",
           {
-            p_admission_id: data.admission_id,
+            p_admission_id:
+              data.admission_id,
+
             p_brief_summary:
-              form.brief_summary.trim() || null,
+              form.brief_summary.trim() ||
+              null,
+
             p_working_diagnosis:
-              form.working_diagnosis.trim() || null,
+              form.working_diagnosis.trim() ||
+              null,
+
             p_relevant_background:
-              form.relevant_background.trim() || null,
+              form.relevant_background.trim() ||
+              null,
+
             p_baseline_clinical_status:
-              form.baseline_clinical_status.trim() || null,
+              form.baseline_clinical_status.trim() ||
+              null,
+
             p_baseline_investigations:
-              form.baseline_investigations.trim() || null,
+              form.baseline_investigations.trim() ||
+              null,
+
             p_initial_plan:
-              form.initial_plan.trim() || null,
+              form.initial_plan.trim() ||
+              null,
+
             p_goals_targets:
-              form.goals_targets.trim() || null,
+              form.goals_targets.trim() ||
+              null,
           }
         );
 
         if (clinicalError) {
-          /*
-           * The admission itself already exists.
-           * Surface the clinical-data problem rather than pretending
-           * the entire creation failed.
-           */
           console.error(
             "Admission created but clinical data update failed:",
             clinicalError
           );
 
           setError(
-            `Admission ${data.admission_number || ""} was created, but the additional clinical data could not be saved.`
+            `Admission ${
+              data.admission_number || ""
+            } was created, but the additional clinical data could not be saved.`
           );
 
           setTimeout(() => {
@@ -746,6 +979,7 @@ function NewPatientModal({ onClose, onCreated }) {
             <h2 className="text-lg font-semibold text-slate-900">
               New Patient Admission
             </h2>
+
             <p className="text-xs text-slate-500">
               Department → Unit → Ward → Bed
             </p>
@@ -760,7 +994,10 @@ function NewPatientModal({ onClose, onCreated }) {
           </button>
         </div>
 
-        <form onSubmit={submit} className="p-5">
+        <form
+          onSubmit={submit}
+          className="p-5"
+        >
           {error && (
             <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
@@ -768,69 +1005,88 @@ function NewPatientModal({ onClose, onCreated }) {
           )}
 
           <div className="space-y-7">
-            {/* BASIC DATA */}
+            {/* PATIENT */}
+
             <section>
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
                 Patient
               </h3>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Patient Code" required>
+                <Field
+                  label="Patient Code"
+                  required
+                >
                   <Input
-                    value={form.patient_code}
-                    onChange={(e) =>
+                    value={
+                      form.patient_code
+                    }
+                    onChange={(event) =>
                       updateField(
                         "patient_code",
-                        e.target.value
+                        event.target.value
                       )
                     }
                     placeholder="Patient code"
                   />
                 </Field>
 
-                <Field label="Full Name" required>
+                <Field
+                  label="Full Name"
+                  required
+                >
                   <Input
-                    value={form.full_name}
-                    onChange={(e) =>
+                    value={
+                      form.full_name
+                    }
+                    onChange={(event) =>
                       updateField(
                         "full_name",
-                        e.target.value
+                        event.target.value
                       )
                     }
                     placeholder="Full name"
                   />
                 </Field>
 
-                <Field label="Age" required>
+                <Field
+                  label="Age"
+                  required
+                >
                   <Input
                     type="number"
                     min="0"
                     value={form.age}
-                    onChange={(e) =>
+                    onChange={(event) =>
                       updateField(
                         "age",
-                        e.target.value
+                        event.target.value
                       )
                     }
                   />
                 </Field>
 
-                <Field label="Sex" required>
+                <Field
+                  label="Sex"
+                  required
+                >
                   <Select
                     value={form.sex}
-                    onChange={(e) =>
+                    onChange={(event) =>
                       updateField(
                         "sex",
-                        e.target.value
+                        event.target.value
                       )
                     }
                   >
                     <option value="">
                       Select sex
                     </option>
+
                     <option value="male">
                       Male
                     </option>
+
                     <option value="female">
                       Female
                     </option>
@@ -840,11 +1096,13 @@ function NewPatientModal({ onClose, onCreated }) {
                 <Field label="Admission Date & Time">
                   <Input
                     type="datetime-local"
-                    value={form.admission_datetime}
-                    onChange={(e) =>
+                    value={
+                      form.admission_datetime
+                    }
+                    onChange={(event) =>
                       updateField(
                         "admission_datetime",
-                        e.target.value
+                        event.target.value
                       )
                     }
                   />
@@ -854,10 +1112,10 @@ function NewPatientModal({ onClose, onCreated }) {
                   <input
                     type="checkbox"
                     checked={form.demo}
-                    onChange={(e) =>
+                    onChange={(event) =>
                       updateField(
                         "demo",
-                        e.target.checked
+                        event.target.checked
                       )
                     }
                     className="h-4 w-4"
@@ -867,6 +1125,7 @@ function NewPatientModal({ onClose, onCreated }) {
                     <span className="block text-sm font-medium text-slate-700">
                       Demo / Training Patient
                     </span>
+
                     <span className="block text-xs text-slate-500">
                       Mark this patient as a non-real training record.
                     </span>
@@ -875,19 +1134,25 @@ function NewPatientModal({ onClose, onCreated }) {
               </div>
             </section>
 
-            {/* LOCATION / RESPONSIBILITY */}
+            {/* LOCATION */}
+
             <section>
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
                 Clinical Location & Responsibility
               </h3>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Department" required>
+                <Field
+                  label="Department"
+                  required
+                >
                   <Select
-                    value={form.department_id}
-                    onChange={(e) =>
+                    value={
+                      form.department_id
+                    }
+                    onChange={(event) =>
                       handleDepartmentChange(
-                        e.target.value
+                        event.target.value
                       )
                     }
                   >
@@ -908,12 +1173,15 @@ function NewPatientModal({ onClose, onCreated }) {
                   </Select>
                 </Field>
 
-                <Field label="Unit" required>
+                <Field
+                  label="Unit"
+                  required
+                >
                   <Select
                     value={form.unit_id}
-                    onChange={(e) =>
+                    onChange={(event) =>
                       handleUnitChange(
-                        e.target.value
+                        event.target.value
                       )
                     }
                     disabled={
@@ -944,15 +1212,20 @@ function NewPatientModal({ onClose, onCreated }) {
                   </Select>
                 </Field>
 
-                <Field label="Ward" required>
+                <Field
+                  label="Ward"
+                  required
+                >
                   <Select
                     value={form.ward_id}
-                    onChange={(e) =>
+                    onChange={(event) =>
                       handleWardChange(
-                        e.target.value
+                        event.target.value
                       )
                     }
-                    disabled={!form.unit_id}
+                    disabled={
+                      !form.unit_id
+                    }
                   >
                     <option value="">
                       {form.unit_id
@@ -960,27 +1233,31 @@ function NewPatientModal({ onClose, onCreated }) {
                         : "Select Unit first"}
                     </option>
 
-                    {availableWards.map((ward) => (
-                      <option
-                        key={ward.id}
-                        value={ward.id}
-                      >
-                        {ward.name}
-                      </option>
-                    ))}
+                    {availableWards.map(
+                      (ward) => (
+                        <option
+                          key={ward.id}
+                          value={ward.id}
+                        >
+                          {ward.name}
+                        </option>
+                      )
+                    )}
                   </Select>
                 </Field>
 
                 <Field label="Bed">
                   <Select
                     value={form.bed_id}
-                    onChange={(e) =>
+                    onChange={(event) =>
                       updateField(
                         "bed_id",
-                        e.target.value
+                        event.target.value
                       )
                     }
-                    disabled={!form.ward_id}
+                    disabled={
+                      !form.ward_id
+                    }
                   >
                     <option value="">
                       {form.ward_id
@@ -988,34 +1265,44 @@ function NewPatientModal({ onClose, onCreated }) {
                         : "Select Ward first"}
                     </option>
 
-                    {availableBeds.map((bed) => (
-                      <option
-                        key={bed.id}
-                        value={bed.id}
-                      >
-                        {bed.name} — Available
-                      </option>
-                    ))}
+                    {availableBeds.map(
+                      (bed) => (
+                        <option
+                          key={bed.id}
+                          value={bed.id}
+                        >
+                          {bed.name} — Available
+                        </option>
+                      )
+                    )}
                   </Select>
 
                   {form.ward_id &&
-                    availableBeds.length === 0 && (
+                    availableBeds.length ===
+                      0 && (
                       <p className="mt-1 text-xs text-amber-600">
                         No available beds in this Ward.
                       </p>
                     )}
                 </Field>
 
-                <Field label="Responsible Medical Officer" required>
+                <Field
+                  label="Responsible Medical Officer"
+                  required
+                >
                   <Select
-                    value={form.responsible_mo_id}
-                    onChange={(e) =>
+                    value={
+                      form.responsible_mo_id
+                    }
+                    onChange={(event) =>
                       updateField(
                         "responsible_mo_id",
-                        e.target.value
+                        event.target.value
                       )
                     }
-                    disabled={!form.unit_id}
+                    disabled={
+                      !form.unit_id
+                    }
                   >
                     <option value="">
                       {form.unit_id
@@ -1047,14 +1334,18 @@ function NewPatientModal({ onClose, onCreated }) {
 
                 <Field label="Consultant / Specialist">
                   <Select
-                    value={form.specialist_id}
-                    onChange={(e) =>
+                    value={
+                      form.specialist_id
+                    }
+                    onChange={(event) =>
                       updateField(
                         "specialist_id",
-                        e.target.value
+                        event.target.value
                       )
                     }
-                    disabled={!form.unit_id}
+                    disabled={
+                      !form.unit_id
+                    }
                   >
                     <option value="">
                       {form.unit_id
@@ -1076,7 +1367,8 @@ function NewPatientModal({ onClose, onCreated }) {
                   </Select>
 
                   {form.unit_id &&
-                    specialists.length === 0 && (
+                    specialists.length ===
+                      0 && (
                       <p className="mt-1 text-xs text-amber-600">
                         No Consultant/Specialist is assigned to this Unit.
                       </p>
@@ -1086,6 +1378,7 @@ function NewPatientModal({ onClose, onCreated }) {
             </section>
 
             {/* ADMISSION */}
+
             <section>
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
                 Admission
@@ -1100,10 +1393,10 @@ function NewPatientModal({ onClose, onCreated }) {
                     value={
                       form.reason_for_admission
                     }
-                    onChange={(e) =>
+                    onChange={(event) =>
                       updateField(
                         "reason_for_admission",
-                        e.target.value
+                        event.target.value
                       )
                     }
                     placeholder="Why is the patient being admitted?"
@@ -1112,11 +1405,13 @@ function NewPatientModal({ onClose, onCreated }) {
 
                 <Field label="Brief Summary">
                   <Textarea
-                    value={form.brief_summary}
-                    onChange={(e) =>
+                    value={
+                      form.brief_summary
+                    }
+                    onChange={(event) =>
                       updateField(
                         "brief_summary",
-                        e.target.value
+                        event.target.value
                       )
                     }
                     placeholder="Brief admission summary"
@@ -1128,10 +1423,10 @@ function NewPatientModal({ onClose, onCreated }) {
                     value={
                       form.working_diagnosis
                     }
-                    onChange={(e) =>
+                    onChange={(event) =>
                       updateField(
                         "working_diagnosis",
-                        e.target.value
+                        event.target.value
                       )
                     }
                     placeholder="Primary / working diagnosis"
@@ -1143,10 +1438,10 @@ function NewPatientModal({ onClose, onCreated }) {
                     value={
                       form.relevant_background
                     }
-                    onChange={(e) =>
+                    onChange={(event) =>
                       updateField(
                         "relevant_background",
-                        e.target.value
+                        event.target.value
                       )
                     }
                     placeholder="Relevant history and comorbidities"
@@ -1158,10 +1453,10 @@ function NewPatientModal({ onClose, onCreated }) {
                     value={
                       form.baseline_clinical_status
                     }
-                    onChange={(e) =>
+                    onChange={(event) =>
                       updateField(
                         "baseline_clinical_status",
-                        e.target.value
+                        event.target.value
                       )
                     }
                     placeholder="Baseline clinical status"
@@ -1173,10 +1468,10 @@ function NewPatientModal({ onClose, onCreated }) {
                     value={
                       form.baseline_investigations
                     }
-                    onChange={(e) =>
+                    onChange={(event) =>
                       updateField(
                         "baseline_investigations",
-                        e.target.value
+                        event.target.value
                       )
                     }
                     placeholder="Important baseline investigations"
@@ -1186,10 +1481,10 @@ function NewPatientModal({ onClose, onCreated }) {
                 <Field label="Initial Plan">
                   <Textarea
                     value={form.initial_plan}
-                    onChange={(e) =>
+                    onChange={(event) =>
                       updateField(
                         "initial_plan",
-                        e.target.value
+                        event.target.value
                       )
                     }
                     placeholder="Initial management plan"
@@ -1198,11 +1493,13 @@ function NewPatientModal({ onClose, onCreated }) {
 
                 <Field label="Goals / Targets">
                   <Textarea
-                    value={form.goals_targets}
-                    onChange={(e) =>
+                    value={
+                      form.goals_targets
+                    }
+                    onChange={(event) =>
                       updateField(
                         "goals_targets",
-                        e.target.value
+                        event.target.value
                       )
                     }
                     placeholder="Clinical goals and targets"
@@ -1239,49 +1536,66 @@ function NewPatientModal({ onClose, onCreated }) {
 }
 
 export default function Patients() {
-  const [patients, setPatients] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [patients, setPatients] =
+    useState([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
   const [showNewPatient, setShowNewPatient] =
     useState(false);
-  const [error, setError] = useState("");
+
+  const [error, setError] =
+    useState("");
 
   async function loadPatients() {
     setLoading(true);
     setError("");
 
     try {
-      const { data, error: queryError } =
-        await db
-          .from("admissions")
-          .select(
-            `
-            id,
-            admission_number,
-            admission_datetime,
-            status,
-            ward_id,
-            bed_id,
-            unit_id,
-            working_diagnosis,
-            patients (
-              id,
-              patient_code,
-              full_name,
-              age,
-              sex
-            )
+      const {
+        data,
+        error: queryError,
+      } = await db
+        .from("admissions")
+        .select(
           `
+          id,
+          admission_number,
+          admission_datetime,
+          status,
+          ward_id,
+          bed_id,
+          unit_id,
+          working_diagnosis,
+          patients (
+            id,
+            patient_code,
+            full_name,
+            age,
+            sex
           )
-          .in("status", ["active", "inpatient"])
-          .order("admission_datetime", {
+        `
+        )
+        .in("status", [
+          "active",
+          "inpatient",
+        ])
+        .order(
+          "admission_datetime",
+          {
             ascending: false,
-          });
+          }
+        );
 
-      if (queryError) throw queryError;
+      if (queryError) {
+        throw queryError;
+      }
 
       setPatients(data || []);
     } catch (err) {
       console.error(err);
+
       setError(
         err?.message ||
           "Failed to load patients."
@@ -1303,6 +1617,7 @@ export default function Patients() {
             <h1 className="text-2xl font-semibold text-slate-900">
               Patients
             </h1>
+
             <p className="mt-1 text-sm text-slate-500">
               Active inpatient admissions
             </p>
@@ -1335,6 +1650,7 @@ export default function Patients() {
               <div className="text-sm font-medium text-slate-700">
                 No patients found
               </div>
+
               <div className="mt-1 text-xs text-slate-500">
                 Create a new admission to see patients here.
               </div>
@@ -1347,15 +1663,19 @@ export default function Patients() {
                     <th className="px-4 py-3">
                       Admission
                     </th>
+
                     <th className="px-4 py-3">
                       Patient
                     </th>
+
                     <th className="px-4 py-3">
                       Age / Sex
                     </th>
+
                     <th className="px-4 py-3">
                       Diagnosis
                     </th>
+
                     <th className="px-4 py-3">
                       Status
                     </th>
@@ -1363,59 +1683,66 @@ export default function Patients() {
                 </thead>
 
                 <tbody className="divide-y">
-                  {patients.map((admission) => {
-                    const patient =
-                      admission.patients;
+                  {patients.map(
+                    (admission) => {
+                      const patient =
+                        admission.patients;
 
-                    return (
-                      <tr
-                        key={admission.id}
-                        className="hover:bg-slate-50"
-                      >
-                        <td className="px-4 py-4">
-                          <div className="font-medium text-slate-900">
-                            {admission.admission_number ||
+                      return (
+                        <tr
+                          key={admission.id}
+                          className="hover:bg-slate-50"
+                        >
+                          <td className="px-4 py-4">
+                            <div className="font-medium text-slate-900">
+                              {admission.admission_number ||
+                                "—"}
+                            </div>
+
+                            <div className="mt-1 text-xs text-slate-500">
+                              {admission.admission_datetime
+                                ? new Date(
+                                    admission.admission_datetime
+                                  ).toLocaleString()
+                                : "—"}
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-4">
+                            <div className="font-medium text-slate-900">
+                              {patient?.full_name ||
+                                "—"}
+                            </div>
+
+                            <div className="mt-1 text-xs text-slate-500">
+                              {patient?.patient_code ||
+                                "—"}
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-4 text-slate-700">
+                            {patient?.age ??
+                              "—"}{" "}
+                            /{" "}
+                            {patient?.sex ||
                               "—"}
-                          </div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            {admission.admission_datetime
-                              ? new Date(
-                                  admission.admission_datetime
-                                ).toLocaleString()
-                              : "—"}
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="px-4 py-4">
-                          <div className="font-medium text-slate-900">
-                            {patient?.full_name ||
+                          <td className="max-w-xs px-4 py-4 text-slate-700">
+                            {admission.working_diagnosis ||
                               "—"}
-                          </div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            {patient?.patient_code ||
-                              "—"}
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="px-4 py-4 text-slate-700">
-                          {patient?.age ?? "—"} /{" "}
-                          {patient?.sex || "—"}
-                        </td>
-
-                        <td className="max-w-xs px-4 py-4 text-slate-700">
-                          {admission.working_diagnosis ||
-                            "—"}
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                            {admission.status ||
-                              "active"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          <td className="px-4 py-4">
+                            <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                              {admission.status ||
+                                "active"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    }
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1436,4 +1763,4 @@ export default function Patients() {
       )}
     </div>
   );
-    }
+}
