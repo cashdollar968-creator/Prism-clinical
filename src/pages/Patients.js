@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../supabase";
+import React, { useEffect, useMemo, useState } from "react";
+import { db } from "../supabase";
 
+console.log("PRISM PATIENTS PAGE LOADED");
 function Field({ label, required, children }) {
   return (
     <label className="block">
