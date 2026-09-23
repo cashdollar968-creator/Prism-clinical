@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../supabase";
-import React, { useEffect, useMemo, useState } from "react";
-import { db } from "../supabase";
 
 console.log("PRISM PATIENTS PAGE LOADED");
+
 function Field({ label, required, children }) {
   return (
     <label className="block">
@@ -111,9 +110,6 @@ function NewPatientModal({ onClose, onCreated }) {
 
       setCurrentUserId(user.id);
 
-      /*
-       * Current user's active clinical assignments.
-       */
       const { data: myRoles, error: rolesError } =
         await db
           .from("user_department_roles")
@@ -181,17 +177,12 @@ function NewPatientModal({ onClose, onCreated }) {
 
       setAccessibleUnitIds(unitIds);
 
-      /*
-       * Departments.
-       */
       const {
         data: departmentData,
         error: departmentError,
       } = await db
         .from("departments")
-        .select(
-          "id,name,hospital_id,active"
-        )
+        .select("id,name,hospital_id,active")
         .eq("active", true)
         .order("name");
 
@@ -199,9 +190,6 @@ function NewPatientModal({ onClose, onCreated }) {
         throw departmentError;
       }
 
-      /*
-       * Units.
-       */
       const {
         data: unitData,
         error: unitError,
@@ -215,9 +203,6 @@ function NewPatientModal({ onClose, onCreated }) {
 
       if (unitError) throw unitError;
 
-      /*
-       * Wards.
-       */
       const {
         data: wardData,
         error: wardError,
@@ -231,33 +216,23 @@ function NewPatientModal({ onClose, onCreated }) {
 
       if (wardError) throw wardError;
 
-      /*
-       * Beds.
-       */
       const {
         data: bedData,
         error: bedError,
       } = await db
         .from("beds")
-        .select(
-          "id,name,ward_id,active"
-        )
+        .select("id,name,ward_id,active")
         .eq("active", true)
         .order("name");
 
       if (bedError) throw bedError;
 
-      /*
-       * Determine occupied beds from active admissions.
-       */
       const {
         data: activeAdmissions,
         error: admissionsError,
       } = await db
         .from("admissions")
-        .select(
-          "id,bed_id,status"
-        )
+        .select("id,bed_id,status")
         .in("status", [
           "active",
           "inpatient",
@@ -280,9 +255,6 @@ function NewPatientModal({ onClose, onCreated }) {
             !occupiedBedIds.has(bed.id),
         }));
 
-      /*
-       * Active profiles.
-       */
       const {
         data: profileData,
         error: profileError,
@@ -296,9 +268,6 @@ function NewPatientModal({ onClose, onCreated }) {
 
       if (profileError) throw profileError;
 
-      /*
-       * Active role assignments for all users.
-       */
       const {
         data: allUserRoles,
         error: allRolesError,
@@ -362,13 +331,10 @@ function NewPatientModal({ onClose, onCreated }) {
 
       for (const role of validUserRoles) {
         if (!profileAssignments[role.user_id]) {
-          profileAssignments[role.user_id] =
-            [];
+          profileAssignments[role.user_id] = [];
         }
 
-        profileAssignments[
-          role.user_id
-        ].push(role);
+        profileAssignments[role.user_id].push(role);
       }
 
       const enrichedProfiles =
@@ -376,24 +342,16 @@ function NewPatientModal({ onClose, onCreated }) {
           (profile) => ({
             ...profile,
             assignments:
-              profileAssignments[
-                profile.id
-              ] || [],
+              profileAssignments[profile.id] || [],
           })
         );
 
-      setDepartments(
-        departmentData || []
-      );
+      setDepartments(departmentData || []);
       setUnits(unitData || []);
       setWards(wardData || []);
       setBeds(bedsWithAvailability);
       setProfiles(enrichedProfiles);
 
-      /*
-       * If only one Unit is accessible,
-       * select it automatically.
-       */
       if (unitIds.length === 1) {
         const selectedUnit =
           (unitData || []).find(
@@ -422,29 +380,19 @@ function NewPatientModal({ onClose, onCreated }) {
     }
   }
 
-  /*
-   * Only Units assigned to current user.
-   */
   const availableUnits = useMemo(() => {
-    if (
-      accessibleUnitIds.length === 0
-    ) {
+    if (accessibleUnitIds.length === 0) {
       return [];
     }
 
     return units.filter((unit) =>
-      accessibleUnitIds.includes(
-        unit.id
-      )
+      accessibleUnitIds.includes(unit.id)
     );
   }, [
     units,
     accessibleUnitIds,
   ]);
 
-  /*
-   * Departments are derived from accessible Units.
-   */
   const availableDepartments =
     useMemo(() => {
       const departmentIds =
@@ -466,34 +414,26 @@ function NewPatientModal({ onClose, onCreated }) {
       availableUnits,
     ]);
 
-  /*
-   * Unit → Ward.
-   */
   const availableWards = useMemo(() => {
     if (!form.unit_id) return [];
 
     return wards.filter(
       (ward) =>
         ward.active &&
-        ward.unit_id ===
-          form.unit_id
+        ward.unit_id === form.unit_id
     );
   }, [
     wards,
     form.unit_id,
   ]);
 
-  /*
-   * Ward → available Bed.
-   */
   const availableBeds = useMemo(() => {
     if (!form.ward_id) return [];
 
     return beds.filter(
       (bed) =>
         bed.active &&
-        bed.ward_id ===
-          form.ward_id &&
+        bed.ward_id === form.ward_id &&
         bed.available
     );
   }, [
@@ -501,9 +441,6 @@ function NewPatientModal({ onClose, onCreated }) {
     form.ward_id,
   ]);
 
-  /*
-   * Users assigned to selected Unit.
-   */
   const unitProfiles = useMemo(() => {
     if (!form.unit_id) return [];
 
@@ -520,9 +457,6 @@ function NewPatientModal({ onClose, onCreated }) {
     form.unit_id,
   ]);
 
-  /*
-   * Medical Officers.
-   */
   const medicalOfficers =
     useMemo(() => {
       return unitProfiles.filter(
@@ -544,25 +478,16 @@ function NewPatientModal({ onClose, onCreated }) {
                 ).toLowerCase();
 
               return (
-                code.includes(
-                  "medical_officer"
-                ) ||
-                code.includes(
-                  "medical officer"
-                ) ||
+                code.includes("medical_officer") ||
+                code.includes("medical officer") ||
                 code === "mo" ||
-                name.includes(
-                  "medical officer"
-                )
+                name.includes("medical officer")
               );
             }
           )
       );
     }, [unitProfiles]);
 
-  /*
-   * Consultants / Specialists / Fellows.
-   */
   const specialists =
     useMemo(() => {
       return unitProfiles.filter(
@@ -584,34 +509,18 @@ function NewPatientModal({ onClose, onCreated }) {
                 ).toLowerCase();
 
               return (
-                code.includes(
-                  "consultant"
-                ) ||
-                code.includes(
-                  "specialist"
-                ) ||
-                code.includes(
-                  "fellow"
-                ) ||
-                name.includes(
-                  "consultant"
-                ) ||
-                name.includes(
-                  "specialist"
-                ) ||
-                name.includes(
-                  "fellow"
-                )
+                code.includes("consultant") ||
+                code.includes("specialist") ||
+                code.includes("fellow") ||
+                name.includes("consultant") ||
+                name.includes("specialist") ||
+                name.includes("fellow")
               );
             }
           )
       );
     }, [unitProfiles]);
 
-  /*
-   * Automatically select current user
-   * if they are a Medical Officer.
-   */
   useEffect(() => {
     if (
       !currentUserId ||
@@ -624,8 +533,7 @@ function NewPatientModal({ onClose, onCreated }) {
     const currentUser =
       medicalOfficers.find(
         (profile) =>
-          profile.id ===
-          currentUserId
+          profile.id === currentUserId
       );
 
     if (currentUser) {
@@ -642,10 +550,7 @@ function NewPatientModal({ onClose, onCreated }) {
     medicalOfficers,
   ]);
 
-  function updateField(
-    field,
-    value
-  ) {
+  function updateField(field, value) {
     setForm((previous) => ({
       ...previous,
       [field]: value,
@@ -657,8 +562,7 @@ function NewPatientModal({ onClose, onCreated }) {
   ) {
     setForm((previous) => ({
       ...previous,
-      department_id:
-        departmentId,
+      department_id: departmentId,
       unit_id: "",
       ward_id: "",
       bed_id: "",
@@ -667,9 +571,7 @@ function NewPatientModal({ onClose, onCreated }) {
     }));
   }
 
-  function handleUnitChange(
-    unitId
-  ) {
+  function handleUnitChange(unitId) {
     const unit =
       availableUnits.find(
         (item) =>
@@ -689,9 +591,7 @@ function NewPatientModal({ onClose, onCreated }) {
     }));
   }
 
-  function handleWardChange(
-    wardId
-  ) {
+  function handleWardChange(wardId) {
     setForm((previous) => ({
       ...previous,
       ward_id: wardId,
@@ -810,9 +710,6 @@ function NewPatientModal({ onClose, onCreated }) {
     try {
       setSaving(true);
 
-      /*
-       * Create Patient + Admission.
-       */
       const {
         data,
         error: rpcError,
@@ -825,9 +722,11 @@ function NewPatientModal({ onClose, onCreated }) {
           p_full_name:
             form.full_name.trim(),
 
-          p_age: Number(form.age),
+          p_age:
+            Number(form.age),
 
-          p_sex: form.sex,
+          p_sex:
+            form.sex,
 
           p_admission_datetime:
             form.admission_datetime
@@ -876,9 +775,6 @@ function NewPatientModal({ onClose, onCreated }) {
         );
       }
 
-      /*
-       * Save additional clinical admission data.
-       */
       const hasClinicalData =
         form.brief_summary.trim() ||
         form.working_diagnosis.trim() ||
@@ -1008,8 +904,6 @@ function NewPatientModal({ onClose, onCreated }) {
           )}
 
           <div className="space-y-7">
-            {/* PATIENT */}
-
             <section>
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
                 Patient
@@ -1136,8 +1030,6 @@ function NewPatientModal({ onClose, onCreated }) {
                 </label>
               </div>
             </section>
-
-            {/* LOCATION */}
 
             <section>
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -1379,8 +1271,6 @@ function NewPatientModal({ onClose, onCreated }) {
                 </Field>
               </div>
             </section>
-
-            {/* ADMISSION */}
 
             <section>
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -1766,4 +1656,4 @@ export default function Patients() {
       )}
     </div>
   );
-}
+      }
